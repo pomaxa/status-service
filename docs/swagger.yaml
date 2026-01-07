@@ -1,0 +1,159 @@
+basePath: /api
+definitions:
+  domain.Status:
+    enum:
+    - green
+    - yellow
+    - red
+    type: string
+    x-enum-varnames:
+    - StatusGreen
+    - StatusYellow
+    - StatusRed
+  domain.System:
+    properties:
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        format: int64
+        type: integer
+      name:
+        type: string
+      owner:
+        description: responsible person/team
+        type: string
+      status:
+        $ref: '#/definitions/domain.Status'
+      updatedAt:
+        type: string
+      url:
+        description: link to the system
+        type: string
+    type: object
+  http.createSystemRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      owner:
+        type: string
+      url:
+        type: string
+    type: object
+  http.errorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  http.updateStatusRequest:
+    properties:
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Internal service for monitoring system status and tracking incidents
+  title: Status Incident API
+  version: "1.0"
+paths:
+  /systems:
+    get:
+      description: Get a list of all systems
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.System'
+            type: array
+      summary: List all systems
+      tags:
+      - systems
+    post:
+      consumes:
+      - application/json
+      description: Create a new system with the provided data
+      parameters:
+      - description: System data
+        in: body
+        name: system
+        required: true
+        schema:
+          $ref: '#/definitions/http.createSystemRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.System'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.errorResponse'
+      summary: Create a new system
+      tags:
+      - systems
+  /systems/{id}:
+    get:
+      description: Get detailed information about a specific system
+      parameters:
+      - description: System ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.System'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http.errorResponse'
+      summary: Get a system by ID
+      tags:
+      - systems
+  /systems/{id}/status:
+    post:
+      consumes:
+      - application/json
+      description: Update the status of a system (green, yellow, red)
+      parameters:
+      - description: System ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: New status
+        in: body
+        name: status
+        required: true
+        schema:
+          $ref: '#/definitions/http.updateStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.System'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.errorResponse'
+      summary: Update system status
+      tags:
+      - systems
+swagger: "2.0"

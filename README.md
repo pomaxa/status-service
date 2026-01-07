@@ -1,8 +1,10 @@
 # Status Incident Service
 
 [![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev/)
+[![CI](https://github.com/pomaxa/status-service/actions/workflows/ci.yml/badge.svg)](https://github.com/pomaxa/status-service/actions)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=flat&logo=sqlite&logoColor=white)](https://sqlite.org/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat&logo=docker&logoColor=white)](Dockerfile)
 
 Internal service for monitoring system status and tracking incidents.
 
@@ -52,6 +54,19 @@ System management interface with backup/restore functionality, system creation, 
 
 ## Getting Started
 
+### Using Docker (recommended)
+
+```bash
+# Build and run with docker-compose
+docker-compose up -d
+
+# Or build manually
+docker build -t status-incident .
+docker run -p 8080:8080 -v status-data:/app/data status-incident
+```
+
+### Local Build
+
 ```bash
 # Build
 go build -o status-incident .
@@ -61,6 +76,10 @@ go build -o status-incident .
 ```
 
 Service will be available at http://localhost:8080
+
+### API Documentation
+
+Swagger UI is available at http://localhost:8080/swagger/
 
 ## Project Structure
 

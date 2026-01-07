@@ -53,6 +53,13 @@ func parseID(r *http.Request, param string) (int64, error) {
 }
 
 // System handlers
+
+// @Summary List all systems
+// @Description Get a list of all systems
+// @Tags systems
+// @Produce json
+// @Success 200 {array} domain.System
+// @Router /systems [get]
 func (s *Server) apiGetSystems(w http.ResponseWriter, r *http.Request) {
 	systems, err := s.systemService.GetAllSystems(r.Context())
 	if err != nil {
@@ -62,6 +69,15 @@ func (s *Server) apiGetSystems(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, systems)
 }
 
+// @Summary Create a new system
+// @Description Create a new system with the provided data
+// @Tags systems
+// @Accept json
+// @Produce json
+// @Param system body createSystemRequest true "System data"
+// @Success 201 {object} domain.System
+// @Failure 400 {object} errorResponse
+// @Router /systems [post]
 func (s *Server) apiCreateSystem(w http.ResponseWriter, r *http.Request) {
 	var req createSystemRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -78,6 +94,14 @@ func (s *Server) apiCreateSystem(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusCreated, system)
 }
 
+// @Summary Get a system by ID
+// @Description Get detailed information about a specific system
+// @Tags systems
+// @Produce json
+// @Param id path int true "System ID"
+// @Success 200 {object} domain.System
+// @Failure 404 {object} errorResponse
+// @Router /systems/{id} [get]
 func (s *Server) apiGetSystem(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
@@ -135,6 +159,16 @@ func (s *Server) apiDeleteSystem(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// @Summary Update system status
+// @Description Update the status of a system (green, yellow, red)
+// @Tags systems
+// @Accept json
+// @Produce json
+// @Param id path int true "System ID"
+// @Param status body updateStatusRequest true "New status"
+// @Success 200 {object} domain.System
+// @Failure 400 {object} errorResponse
+// @Router /systems/{id}/status [post]
 func (s *Server) apiUpdateSystemStatus(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {

@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  status-incident:
+    build: .
+    container_name: status-incident
+    ports:
+      - "8080:8080"
+    volumes:
+      - status-data:/app/data
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
+
+volumes:
+  status-data:

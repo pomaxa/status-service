@@ -1,5 +1,11 @@
 package main
 
+// @title Status Incident API
+// @version 1.0
+// @description Internal service for monitoring system status and tracking incidents
+// @host localhost:8080
+// @BasePath /api
+
 import (
 	"context"
 	"flag"
@@ -15,6 +21,8 @@ import (
 	"status-incident/internal/infrastructure/sqlite"
 	httpserver "status-incident/internal/interfaces/http"
 	"status-incident/internal/interfaces/background"
+
+	_ "status-incident/docs" // Swagger docs
 )
 
 func main() {

@@ -1,0 +1,32 @@
+# Binary
+status-incident
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Claude
+.claude/
+
+# Docs (not needed in container)
+docs/
+*.md
+LICENSE
+
+# Test files
+*_test.go

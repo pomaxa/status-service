@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // Server represents the HTTP server
@@ -48,6 +49,11 @@ func (s *Server) setupRoutes() {
 	// Static files
 	fs := http.FileServer(http.Dir("static"))
 	s.router.Handle("/static/*", http.StripPrefix("/static/", fs))
+
+	// Swagger documentation
+	s.router.Get("/swagger/*", httpSwagger.Handler(
+		httpSwagger.URL("/swagger/doc.json"),
+	))
 
 	// Web UI routes
 	s.router.Get("/", s.handleDashboard)
