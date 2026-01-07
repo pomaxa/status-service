@@ -1,138 +1,240 @@
 # Status Incident Service
 
-Внутренний сервис мониторинга статусов систем и отслеживания инцидентов.
+Internal service for monitoring system status and tracking incidents.
 
-## Возможности
+## Features
 
-- **Управление системами** - добавление проектов/сервисов с описанием, URL и ответственным
-- **Зависимости** - отслеживание компонентов каждой системы (БД, Redis, API и т.д.)
-- **Статусы-светофор** - green (работает), yellow (деградация), red (недоступен)
-- **Ручное обновление** - изменение статуса с комментарием
-- **Heartbeat мониторинг** - автоматическая проверка URL каждую минуту
-- **История изменений** - полный лог всех изменений статусов
-- **Аналитика** - uptime/SLA, количество инцидентов, MTTR
+- **System Management** - add projects/services with description, URL, and owner
+- **Dependencies** - track components of each system (DB, Redis, API, etc.)
+- **Traffic Light Status** - green (operational), yellow (degraded), red (outage)
+- **Manual Updates** - change status with comments
+- **Heartbeat Monitoring** - automatic URL health checks every minute
+- **Change History** - complete log of all status changes
+- **Analytics** - uptime/SLA, incident count, MTTR
 
-## Технологии
+## Tech Stack
 
 - **Backend:** Go + chi router
 - **Database:** SQLite (WAL mode)
 - **Frontend:** HTML templates + vanilla JS
-- **Архитектура:** DDD (Domain-Driven Design)
+- **Architecture:** DDD (Domain-Driven Design)
 
-## Запуск
+## Getting Started
 
 ```bash
-# Сборка
+# Build
 go build -o status-incident .
 
-# Запуск (порт 8080)
+# Run (port 8080)
 ./status-incident
 ```
 
-Сервис будет доступен по адресу http://localhost:8080
+Service will be available at http://localhost:8080
 
-## Структура проекта
+## Project Structure
 
 ```
-├── main.go                     # Точка входа
+├── main.go                     # Entry point
 ├── internal/
-│   ├── domain/                 # Бизнес-логика (entities, value objects)
-│   ├── application/            # Use cases (сервисы)
-│   ├── infrastructure/         # SQLite репозитории, HTTP checker
+│   ├── domain/                 # Business logic (entities, value objects)
+│   ├── application/            # Use cases (services)
+│   ├── infrastructure/         # SQLite repositories, HTTP checker
 │   └── interfaces/             # HTTP handlers, background workers
-├── templates/                  # HTML шаблоны
-└── static/                     # CSS стили
+├── templates/                  # HTML templates
+└── static/                     # CSS styles
 ```
 
-## Web-интерфейс
+## Web Interface
 
-| Страница | URL | Описание |
-|----------|-----|----------|
-| Dashboard | `/` | Обзор всех систем |
-| System | `/systems/{id}` | Детали системы и зависимостей |
-| Admin | `/admin` | Управление системами |
-| Logs | `/logs` | История изменений |
-| Analytics | `/analytics` | Статистика и SLA |
+| Page | URL | Description |
+|------|-----|-------------|
+| Dashboard | `/` | Overview of all systems |
+| System | `/systems/{id}` | System details and dependencies |
+| Admin | `/admin` | Manage systems |
+| Logs | `/logs` | Change history |
+| Analytics | `/analytics` | Statistics and SLA |
 
 ## REST API
 
-### Системы
+### Systems
 
 ```bash
-# Список систем
+# List systems
 GET /api/systems
 
-# Создать систему
+# Create system
 POST /api/systems
 {"name": "API", "description": "Main API", "url": "https://api.example.com", "owner": "Backend Team"}
 
-# Получить систему
+# Get system
 GET /api/systems/{id}
 
-# Обновить систему
+# Update system
 PUT /api/systems/{id}
 {"name": "API", "description": "Updated", "url": "https://api.example.com", "owner": "Backend Team"}
 
-# Удалить систему
+# Delete system
 DELETE /api/systems/{id}
 
-# Изменить статус
+# Change status
 POST /api/systems/{id}/status
 {"status": "yellow", "message": "Degraded performance"}
 ```
 
-### Зависимости
+### Dependencies
 
 ```bash
-# Список зависимостей системы
+# List dependencies
 GET /api/systems/{id}/dependencies
 
-# Добавить зависимость
+# Add dependency
 POST /api/systems/{id}/dependencies
 {"name": "PostgreSQL", "description": "Main database"}
 
-# Обновить зависимость
+# Update dependency
 PUT /api/dependencies/{id}
 
-# Удалить зависимость
+# Delete dependency
 DELETE /api/dependencies/{id}
 
-# Изменить статус зависимости
+# Change dependency status
 POST /api/dependencies/{id}/status
 {"status": "red", "message": "Connection lost"}
 
-# Настроить heartbeat
+# Configure heartbeat
 POST /api/dependencies/{id}/heartbeat
 {"url": "https://api.example.com/health", "interval": 60}
 
-# Отключить heartbeat
+# Disable heartbeat
 DELETE /api/dependencies/{id}/heartbeat
 
-# Принудительная проверка
+# Force check
 POST /api/dependencies/{id}/check
 ```
 
-### Аналитика
+### Analytics
 
 ```bash
-# Общая аналитика
+# Overall analytics
 GET /api/analytics?period=24h
 
-# Аналитика системы
+# System analytics
 GET /api/systems/{id}/analytics?period=7d
 
-# Все логи
+# All logs
 GET /api/logs?limit=100
 ```
 
-## Heartbeat логика
+## Heartbeat Monitoring
 
-- Проверка URL каждую минуту
-- HTTP 200 = успех, иначе = ошибка
-- 1 ошибка подряд → статус **yellow**
-- 3 ошибки подряд → статус **red**
-- Успешная проверка → сброс счетчика, статус **green**
+### How It Works
 
-## Лицензия
+The service performs HTTP GET requests to configured heartbeat URLs every minute.
+
+**Status determination:**
+- **GREEN** - HTTP 2xx response (200, 201, 204, etc.)
+- **YELLOW** - 1-2 consecutive failures (non-2xx or timeout)
+- **RED** - 3+ consecutive failures
+
+### Health Endpoint Examples
+
+Your service should expose a health endpoint that returns appropriate HTTP status codes.
+
+#### GREEN Status (Operational)
+
+```http
+GET /health HTTP/1.1
+Host: your-service.com
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"status": "ok"}
+```
+
+Any 2xx response is considered healthy:
+- `200 OK`
+- `201 Created`
+- `204 No Content`
+
+#### YELLOW Status (Degraded)
+
+Returned after 1-2 consecutive check failures:
+
+```http
+GET /health HTTP/1.1
+Host: your-service.com
+
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+
+{"status": "degraded", "message": "Database connection slow"}
+```
+
+Non-2xx responses that trigger degraded status:
+- `500 Internal Server Error`
+- `502 Bad Gateway`
+- `503 Service Unavailable`
+- `504 Gateway Timeout`
+- Connection timeout
+- DNS resolution failure
+
+#### RED Status (Outage)
+
+Returned after 3+ consecutive check failures:
+
+```http
+GET /health HTTP/1.1
+Host: your-service.com
+
+HTTP/1.1 500 Internal Server Error
+Content-Type: application/json
+
+{"status": "error", "message": "Database unreachable"}
+```
+
+### Recommended Health Endpoint Implementation
+
+```go
+// Go example
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+    // Check your dependencies
+    if err := db.Ping(); err != nil {
+        w.WriteHeader(http.StatusServiceUnavailable)
+        json.NewEncoder(w).Encode(map[string]string{
+            "status": "error",
+            "message": err.Error(),
+        })
+        return
+    }
+
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(map[string]string{
+        "status": "ok",
+    })
+}
+```
+
+```javascript
+// Node.js example
+app.get('/health', async (req, res) => {
+    try {
+        await db.query('SELECT 1');
+        res.json({ status: 'ok' });
+    } catch (err) {
+        res.status(503).json({ status: 'error', message: err.message });
+    }
+});
+```
+
+### Request Details
+
+The heartbeat checker sends requests with:
+- **Method:** GET
+- **Timeout:** 10 seconds
+- **User-Agent:** `StatusIncident-HealthChecker/1.0`
+- **Redirects:** Follows up to 10 redirects
+
+## License
 
 MIT
