@@ -1,0 +1,79 @@
+{{define "title"}}Dashboard{{end}}
+
+{{define "content"}}
+<div class="page-header">
+    <h1>System Status</h1>
+    {{if .Analytics}}
+    <div class="overall-stats">
+        <span class="stat">
+            <span class="stat-label">Uptime (24h):</span>
+            <span class="stat-value">{{printf "%.2f" .Analytics.UptimePercent}}%</span>
+        </span>
+        <span class="stat">
+            <span class="stat-label">Incidents:</span>
+            <span class="stat-value">{{.Analytics.TotalIncidents}}</span>
+        </span>
+    </div>
+    {{end}}
+</div>
+
+{{if not .Systems}}
+<div class="empty-state">
+    <p>No systems configured yet.</p>
+    <a href="/admin" class="btn btn-primary">Add System</a>
+</div>
+{{else}}
+<div class="systems-grid">
+    {{range .Systems}}
+    <div class="system-card {{statusClass .Status}}">
+        <div class="system-header">
+            <div class="status-indicator {{statusClass .Status}}"></div>
+            <h2><a href="/systems/{{.ID}}">{{.Name}}</a></h2>
+            <span class="status-label">{{statusIcon .Status}}</span>
+        </div>
+
+        {{if .Description}}
+        <p class="system-description">{{.Description}}</p>
+        {{end}}
+
+        <div class="system-meta">
+            {{if .Owner}}<span class="meta-item"><strong>Owner:</strong> {{.Owner}}</span>{{end}}
+            {{if .URL}}<a href="{{.URL}}" target="_blank" class="meta-link">Open System</a>{{end}}
+        </div>
+
+        {{if .Dependencies}}
+        <div class="dependencies">
+            <h4>Components</h4>
+            <ul class="dep-list">
+                {{range .Dependencies}}
+                <li class="dep-item">
+                    <span class="status-dot {{statusClass .Status}}"></span>
+                    <span class="dep-name">{{.Name}}</span>
+                    {{if .HeartbeatURL}}
+                    <span class="heartbeat-badge" title="Auto-monitoring enabled">HB</span>
+                    {{end}}
+                </li>
+                {{end}}
+            </ul>
+        </div>
+        {{end}}
+
+        {{if .Analytics}}
+        <div class="system-stats">
+            <span class="mini-stat">
+                <span class="mini-label">Uptime:</span>
+                {{printf "%.2f" .Analytics.UptimePercent}}%
+            </span>
+            {{if gt .Analytics.TotalIncidents 0}}
+            <span class="mini-stat warning">
+                <span class="mini-label">Incidents:</span>
+                {{.Analytics.TotalIncidents}}
+            </span>
+            {{end}}
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+</div>
+{{end}}
+{{end}}

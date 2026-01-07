@@ -1,0 +1,110 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"status-incident/internal/application"
+	"status-incident/internal/infrastructure/http_checker"
+	"status-incident/internal/infrastructure/sqlite"
+	httpserver "status-incident/internal/interfaces/http"
+	"status-incident/internal/interfaces/background"
+)
+
+func main() {
+	// Parse flags
+	addr := flag.String("addr", ":8080", "HTTP server address")
+	dbPath := flag.String("db", "status.db", "SQLite database path")
+	templateDir := flag.String("templates", "templates", "Templates directory")
+	heartbeatInterval := flag.Duration("heartbeat", 60*time.Second, "Heartbeat check interval")
+	flag.Parse()
+
+	log.Printf("Starting Status Incident Service...")
+
+	// Initialize database
+	db, err := sqlite.New(*dbPath)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	// Run migrations
+	if err := db.Migrate(); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	// Initialize repositories
+	systemRepo := sqlite.NewSystemRepo(db)
+	depRepo := sqlite.NewDependencyRepo(db)
+	logRepo := sqlite.NewLogRepo(db)
+	analyticsRepo := sqlite.NewAnalyticsRepo(db)
+
+	// Initialize health checker
+	checker := http_checker.New(10 * time.Second)
+
+	// Initialize services
+	systemService := application.NewSystemService(systemRepo, logRepo)
+	depService := application.NewDependencyService(depRepo, logRepo)
+	heartbeatService := application.NewHeartbeatService(depRepo, logRepo, checker)
+	analyticsService := application.NewAnalyticsService(analyticsRepo, logRepo)
+
+	// Initialize HTTP server
+	server := httpserver.NewServer(
+		systemService,
+		depService,
+		heartbeatService,
+		analyticsService,
+		*templateDir,
+	)
+
+	// Initialize heartbeat worker
+	heartbeatWorker := background.NewHeartbeatWorker(heartbeatService, *heartbeatInterval)
+
+	// Start heartbeat worker
+	ctx, cancel := context.WithCancel(context.Background())
+	heartbeatWorker.Start(ctx)
+
+	// Create HTTP server
+	httpServer := &http.Server{
+		Addr:         *addr,
+		Handler:      server,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Start HTTP server in goroutine
+	go func() {
+		log.Printf("HTTP server listening on %s", *addr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP server error: %v", err)
+		}
+	}()
+
+	// Wait for shutdown signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down...")
+
+	// Stop heartbeat worker
+	cancel()
+	heartbeatWorker.Stop()
+
+	// Shutdown HTTP server
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	}
+
+	log.Println("Shutdown complete")
+}

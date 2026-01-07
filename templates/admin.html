@@ -1,0 +1,250 @@
+{{define "title"}}Admin{{end}}
+
+{{define "content"}}
+<div class="page-header">
+    <h1>Administration</h1>
+</div>
+
+<section class="card">
+    <h2>Add New System</h2>
+    <form id="addSystemForm" class="admin-form">
+        <div class="form-row">
+            <input type="text" name="name" placeholder="System name" required>
+            <input type="text" name="description" placeholder="Description (optional)">
+        </div>
+        <div class="form-row">
+            <input type="url" name="url" placeholder="System URL (optional)">
+            <input type="text" name="owner" placeholder="Owner/Team (optional)">
+        </div>
+        <button type="submit" class="btn btn-primary">Add System</button>
+    </form>
+</section>
+
+{{if .Systems}}
+<section class="card">
+    <h2>Manage Systems</h2>
+    {{range .Systems}}
+    <div class="admin-system">
+        <div class="admin-system-header">
+            <span class="status-dot {{statusClass .Status}}"></span>
+            <strong>{{.Name}}</strong>
+            {{if .Owner}}<span class="owner-badge">{{.Owner}}</span>{{end}}
+            {{if .URL}}<a href="{{.URL}}" target="_blank" class="url-link">Link</a>{{end}}
+            <div class="admin-actions">
+                <button class="btn btn-small" onclick="editSystem({{.ID}}, '{{.Name}}', '{{.Description}}', '{{.URL}}', '{{.Owner}}')">Edit</button>
+                <button class="btn btn-small btn-danger" onclick="deleteSystem({{.ID}}, '{{.Name}}')">Delete</button>
+            </div>
+        </div>
+
+        <div class="admin-dependencies">
+            <div class="dep-header">
+                <h4>Dependencies</h4>
+                <button class="btn btn-small" onclick="addDependency({{.ID}})">+ Add</button>
+            </div>
+
+            {{if .Dependencies}}
+            <ul class="admin-dep-list">
+                {{range .Dependencies}}
+                <li>
+                    <span class="status-dot {{statusClass .Status}}"></span>
+                    <span class="dep-name">{{.Name}}</span>
+                    {{if .HeartbeatURL}}
+                    <span class="heartbeat-badge">HB: {{.HeartbeatInterval}}s</span>
+                    {{end}}
+                    <div class="dep-actions">
+                        <button class="btn btn-tiny" onclick="editDependency({{.ID}}, '{{.Name}}', '{{.Description}}')">Edit</button>
+                        <button class="btn btn-tiny" onclick="configureHeartbeat({{.ID}}, '{{.HeartbeatURL}}', {{.HeartbeatInterval}})">Heartbeat</button>
+                        <button class="btn btn-tiny btn-danger" onclick="deleteDependency({{.ID}}, '{{.Name}}')">Delete</button>
+                    </div>
+                </li>
+                {{end}}
+            </ul>
+            {{else}}
+            <p class="no-deps">No dependencies configured</p>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+</section>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+document.getElementById('addSystemForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = e.target.name.value;
+    const description = e.target.description.value;
+    const url = e.target.url.value;
+    const owner = e.target.owner.value;
+
+    try {
+        const res = await fetch('/api/systems', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, description, url, owner})
+        });
+
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to create system');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+});
+
+async function editSystem(id, name, description, url, owner) {
+    const newName = prompt('System name:', name);
+    if (!newName) return;
+
+    const newDesc = prompt('Description:', description) || '';
+    const newUrl = prompt('System URL:', url) || '';
+    const newOwner = prompt('Owner/Team:', owner) || '';
+
+    try {
+        const res = await fetch(`/api/systems/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: newName, description: newDesc, url: newUrl, owner: newOwner})
+        });
+
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to update system');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+
+async function deleteSystem(id, name) {
+    if (!confirm(`Are you sure you want to delete "${name}"? This will also delete all its dependencies.`)) return;
+
+    try {
+        const res = await fetch(`/api/systems/${id}`, {method: 'DELETE'});
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to delete system');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+
+async function addDependency(systemId) {
+    const name = prompt('Dependency name:');
+    if (!name) return;
+
+    const description = prompt('Description (optional):') || '';
+
+    try {
+        const res = await fetch(`/api/systems/${systemId}/dependencies`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, description})
+        });
+
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to create dependency');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+
+async function editDependency(id, name, description) {
+    const newName = prompt('Dependency name:', name);
+    if (!newName) return;
+
+    const newDesc = prompt('Description:', description) || '';
+
+    try {
+        const res = await fetch(`/api/dependencies/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: newName, description: newDesc})
+        });
+
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to update dependency');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+
+async function configureHeartbeat(id, currentUrl, currentInterval) {
+    const url = prompt('Heartbeat URL (leave empty to disable):', currentUrl || '');
+
+    if (url === null) return; // cancelled
+
+    if (url === '') {
+        // Clear heartbeat
+        try {
+            const res = await fetch(`/api/dependencies/${id}/heartbeat`, {method: 'DELETE'});
+            if (res.ok) {
+                location.reload();
+            } else {
+                const data = await res.json();
+                alert(data.error || 'Failed to clear heartbeat');
+            }
+        } catch (err) {
+            alert('Network error');
+        }
+        return;
+    }
+
+    const interval = parseInt(prompt('Check interval (seconds):', currentInterval || '60'), 10);
+    if (!interval || interval < 10) {
+        alert('Interval must be at least 10 seconds');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/dependencies/${id}/heartbeat`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url, interval})
+        });
+
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to configure heartbeat');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+
+async function deleteDependency(id, name) {
+    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+    try {
+        const res = await fetch(`/api/dependencies/${id}`, {method: 'DELETE'});
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to delete dependency');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+</script>
+{{end}}

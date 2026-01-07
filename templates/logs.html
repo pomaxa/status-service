@@ -1,0 +1,49 @@
+{{define "title"}}Logs{{end}}
+
+{{define "content"}}
+<div class="page-header">
+    <h1>Activity Log</h1>
+</div>
+
+{{if not .Logs}}
+<div class="empty-state">
+    <p>No activity recorded yet.</p>
+</div>
+{{else}}
+<section class="card">
+    <table class="data-table logs-table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Entity</th>
+                <th>Change</th>
+                <th>Message</th>
+                <th>Source</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Logs}}
+            <tr>
+                <td class="time-col">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                <td>
+                    {{if .SystemName}}
+                    <span class="entity-badge system">{{.SystemName}}</span>
+                    {{end}}
+                    {{if .DependencyName}}
+                    <span class="entity-badge dependency">{{.DependencyName}}</span>
+                    {{end}}
+                </td>
+                <td class="change-col">
+                    <span class="status-dot {{statusClass .OldStatus}}"></span>
+                    &rarr;
+                    <span class="status-dot {{statusClass .NewStatus}}"></span>
+                </td>
+                <td class="message-col">{{if .Message}}{{.Message}}{{else}}<span class="no-message">-</span>{{end}}</td>
+                <td><span class="source-badge {{.Source}}">{{.Source}}</span></td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</section>
+{{end}}
+{{end}}

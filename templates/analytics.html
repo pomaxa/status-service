@@ -1,0 +1,98 @@
+{{define "title"}}Analytics{{end}}
+
+{{define "content"}}
+<div class="page-header">
+    <h1>Analytics</h1>
+    <div class="period-selector">
+        <a href="?period=1h" class="period-btn">1h</a>
+        <a href="?period=24h" class="period-btn">24h</a>
+        <a href="?period=7d" class="period-btn">7d</a>
+        <a href="?period=30d" class="period-btn">30d</a>
+    </div>
+</div>
+
+{{if .Overall}}
+<section class="card highlight-card">
+    <h2>Overall Performance</h2>
+    <div class="analytics-grid large">
+        <div class="metric {{if ge .Overall.UptimePercent 99.9}}excellent{{else if ge .Overall.UptimePercent 99.0}}good{{else if ge .Overall.UptimePercent 95.0}}warning{{else}}critical{{end}}">
+            <span class="metric-value">{{printf "%.2f" .Overall.UptimePercent}}%</span>
+            <span class="metric-label">Uptime</span>
+        </div>
+        <div class="metric {{if ge .Overall.AvailabilityPercent 99.9}}excellent{{else if ge .Overall.AvailabilityPercent 99.0}}good{{else if ge .Overall.AvailabilityPercent 95.0}}warning{{else}}critical{{end}}">
+            <span class="metric-value">{{printf "%.2f" .Overall.AvailabilityPercent}}%</span>
+            <span class="metric-label">Availability</span>
+        </div>
+        <div class="metric">
+            <span class="metric-value">{{.Overall.TotalIncidents}}</span>
+            <span class="metric-label">Total Incidents</span>
+        </div>
+        <div class="metric">
+            <span class="metric-value">{{.Overall.ResolvedIncidents}}</span>
+            <span class="metric-label">Resolved</span>
+        </div>
+        <div class="metric {{if gt .Overall.OngoingIncidents 0}}warning{{end}}">
+            <span class="metric-value">{{.Overall.OngoingIncidents}}</span>
+            <span class="metric-label">Ongoing</span>
+        </div>
+    </div>
+</section>
+{{end}}
+
+{{if .Systems}}
+<section class="card">
+    <h2>Per-System Analytics</h2>
+    <table class="data-table analytics-table">
+        <thead>
+            <tr>
+                <th>System</th>
+                <th>Status</th>
+                <th>Uptime</th>
+                <th>Availability</th>
+                <th>Incidents</th>
+                <th>Ongoing</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Systems}}
+            <tr>
+                <td>
+                    <a href="/systems/{{.ID}}">
+                        <span class="status-dot {{statusClass .Status}}"></span>
+                        {{.Name}}
+                    </a>
+                </td>
+                <td>
+                    <span class="status-badge small {{statusClass .Status}}">{{statusIcon .Status}}</span>
+                </td>
+                {{if .Analytics}}
+                <td class="{{if ge .Analytics.UptimePercent 99.9}}excellent{{else if ge .Analytics.UptimePercent 99.0}}good{{else if ge .Analytics.UptimePercent 95.0}}warning{{else}}critical{{end}}">
+                    {{printf "%.2f" .Analytics.UptimePercent}}%
+                </td>
+                <td class="{{if ge .Analytics.AvailabilityPercent 99.9}}excellent{{else if ge .Analytics.AvailabilityPercent 99.0}}good{{else if ge .Analytics.AvailabilityPercent 95.0}}warning{{else}}critical{{end}}">
+                    {{printf "%.2f" .Analytics.AvailabilityPercent}}%
+                </td>
+                <td>{{.Analytics.TotalIncidents}}</td>
+                <td class="{{if gt .Analytics.OngoingIncidents 0}}warning{{end}}">
+                    {{.Analytics.OngoingIncidents}}
+                </td>
+                {{else}}
+                <td colspan="4">No data</td>
+                {{end}}
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</section>
+{{end}}
+
+<section class="card info-card">
+    <h2>SLA Reference</h2>
+    <table class="sla-table">
+        <tr><td>99.99%</td><td>52.6 min/year downtime</td><td class="excellent">Excellent</td></tr>
+        <tr><td>99.9%</td><td>8.76 hr/year downtime</td><td class="good">Good</td></tr>
+        <tr><td>99%</td><td>3.65 days/year downtime</td><td class="warning">Acceptable</td></tr>
+        <tr><td>&lt;99%</td><td>&gt;3.65 days/year downtime</td><td class="critical">Needs Improvement</td></tr>
+    </table>
+</section>
+{{end}}
