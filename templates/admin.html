@@ -6,6 +6,29 @@
 </div>
 
 <section class="card">
+    <h2>Backup & Restore</h2>
+    <div class="backup-actions">
+        <div class="backup-group">
+            <h4>Export Data</h4>
+            <p class="backup-desc">Download all systems, dependencies, and history as JSON file.</p>
+            <div class="backup-buttons">
+                <a href="/api/export" class="btn btn-primary" download>Export All</a>
+                <a href="/api/export/logs" class="btn btn-small" download>Export Logs Only</a>
+            </div>
+        </div>
+        <div class="backup-group">
+            <h4>Import Data</h4>
+            <p class="backup-desc">Restore data from a previously exported JSON file.</p>
+            <div class="backup-buttons">
+                <input type="file" id="importFile" accept=".json" style="display:none">
+                <button class="btn btn-primary" onclick="document.getElementById('importFile').click()">Import from File</button>
+            </div>
+        </div>
+    </div>
+    <div id="importResult" class="import-result" style="display:none"></div>
+</section>
+
+<section class="card">
     <h2>Add New System</h2>
     <form id="addSystemForm" class="admin-form">
         <div class="form-row">
@@ -246,5 +269,52 @@ async function deleteDependency(id, name) {
         alert('Network error');
     }
 }
+
+// Import handling
+document.getElementById('importFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!confirm('This will import data from the file. Existing data will NOT be replaced, new entries will be created. Continue?')) {
+        e.target.value = '';
+        return;
+    }
+
+    const resultDiv = document.getElementById('importResult');
+    resultDiv.style.display = 'block';
+    resultDiv.className = 'import-result loading';
+    resultDiv.innerHTML = 'Importing...';
+
+    try {
+        const content = await file.text();
+        const res = await fetch('/api/import', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: content
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+            resultDiv.className = 'import-result success';
+            resultDiv.innerHTML = `
+                <strong>Import completed!</strong><br>
+                Systems: ${data.systems_imported}<br>
+                Dependencies: ${data.dependencies_imported}<br>
+                Logs: ${data.logs_imported}
+                ${data.errors && data.errors.length ? '<br><br>Warnings:<br>' + data.errors.join('<br>') : ''}
+            `;
+            setTimeout(() => location.reload(), 3000);
+        } else {
+            resultDiv.className = 'import-result error';
+            resultDiv.innerHTML = `<strong>Import failed:</strong> ${data.error || 'Unknown error'}`;
+        }
+    } catch (err) {
+        resultDiv.className = 'import-result error';
+        resultDiv.innerHTML = `<strong>Error:</strong> ${err.message}`;
+    }
+
+    e.target.value = '';
+});
 </script>
 {{end}}
