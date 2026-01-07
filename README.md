@@ -6,6 +6,8 @@
 
 Internal service for monitoring system status and tracking incidents.
 
+![Dashboard](docs/screenshot-dashboard.png)
+
 ## Features
 
 - **System Management** - add projects/services with description, URL, and owner
