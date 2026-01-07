@@ -1,0 +1,43 @@
+# Status Incident - systemd service unit
+# Copy to: /etc/systemd/system/status-incident.service
+# Enable: systemctl enable status-incident
+# Start: systemctl start status-incident
+
+[Unit]
+Description=Status Incident Monitoring Service
+Documentation=https://github.com/pomaxa/status-service
+After=network.target
+
+[Service]
+Type=simple
+User=status-incident
+Group=status-incident
+WorkingDirectory=/opt/status-incident
+
+ExecStart=/opt/status-incident/status-incident \
+    -addr 127.0.0.1:8080 \
+    -db /opt/status-incident/data/status.db \
+    -templates /opt/status-incident/templates \
+    -heartbeat 60s
+
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/status-incident/data
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=512M
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=status-incident
+
+[Install]
+WantedBy=multi-user.target
