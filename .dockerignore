@@ -23,8 +23,8 @@ data/
 # Claude
 .claude/
 
-# Docs (not needed in container)
-docs/
+# Docs (keep swagger files, exclude screenshots)
+docs/*.png
 *.md
 LICENSE
 
