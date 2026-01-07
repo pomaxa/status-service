@@ -88,6 +88,11 @@ func (s *Server) setupRoutes() {
 
 		// Analytics
 		r.Get("/analytics", s.apiGetOverallAnalytics)
+
+		// Export/Import
+		r.Get("/export", s.apiExportAll)
+		r.Get("/export/logs", s.apiExportLogs)
+		r.Post("/import", s.apiImportAll)
 	})
 }
 

@@ -95,6 +95,14 @@ func (s *AnalyticsService) GetAllLogs(ctx context.Context, limit int) ([]*domain
 	return logs, nil
 }
 
+// CreateLog creates a new status log entry (used for import)
+func (s *AnalyticsService) CreateLog(ctx context.Context, log *domain.StatusLog) error {
+	if err := s.logRepo.Create(ctx, log); err != nil {
+		return fmt.Errorf("failed to create log: %w", err)
+	}
+	return nil
+}
+
 // parsePeriod converts period string to time range
 func (s *AnalyticsService) parsePeriod(period string) (start, end time.Time) {
 	end = time.Now()

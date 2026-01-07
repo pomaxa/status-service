@@ -125,6 +125,75 @@ GET /api/systems/{id}/analytics?period=7d
 GET /api/logs?limit=100
 ```
 
+### Export / Import
+
+```bash
+# Export all data (systems, dependencies, logs)
+GET /api/export
+# Returns JSON file download
+
+# Export only logs
+GET /api/export/logs
+
+# Import data from backup
+POST /api/import
+Content-Type: application/json
+# Body: exported JSON data
+```
+
+**Export format:**
+```json
+{
+  "exported_at": "2024-01-15T10:30:00Z",
+  "version": "1.0",
+  "systems": [
+    {
+      "id": 1,
+      "name": "API",
+      "description": "Main API",
+      "url": "https://api.example.com",
+      "owner": "Backend Team",
+      "status": "green",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-15T10:00:00Z"
+    }
+  ],
+  "dependencies": [
+    {
+      "id": 1,
+      "system_id": 1,
+      "name": "PostgreSQL",
+      "description": "Main database",
+      "status": "green",
+      "heartbeat_url": "https://api.example.com/health/db",
+      "heartbeat_interval": 60,
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "logs": [
+    {
+      "id": 1,
+      "system_id": 1,
+      "old_status": "green",
+      "new_status": "yellow",
+      "message": "High latency detected",
+      "source": "manual",
+      "created_at": "2024-01-15T09:00:00Z"
+    }
+  ]
+}
+```
+
+**Import response:**
+```json
+{
+  "systems_imported": 5,
+  "dependencies_imported": 12,
+  "logs_imported": 150,
+  "errors": []
+}
+```
+
 ## Heartbeat Monitoring
 
 ### How It Works
