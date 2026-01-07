@@ -6,7 +6,32 @@
 
 Internal service for monitoring system status and tracking incidents.
 
+## Screenshots
+
+### Dashboard
+Overview of all systems with real-time status indicators, uptime metrics, and component health.
+
 ![Dashboard](docs/screenshot-dashboard.png)
+
+### System Details
+Detailed view of a specific system with status controls, 24h analytics, and dependency management.
+
+![System Details](docs/screenshot-system.png)
+
+### Analytics
+Performance metrics including uptime percentage, availability, incident counts, and SLA reference table.
+
+![Analytics](docs/screenshot-analytics.png)
+
+### Activity Log
+Complete history of all status changes with timestamps, source tracking (manual/heartbeat), and messages.
+
+![Activity Log](docs/screenshot-logs.png)
+
+### Administration
+System management interface with backup/restore functionality, system creation, and dependency configuration.
+
+![Admin](docs/screenshot-admin.png)
 
 ## Features
 
