@@ -264,6 +264,13 @@ a:hover {
     font-weight: 500;
 }
 
+.latency-value {
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: #059669;
+    font-weight: 500;
+}
+
 /* System Stats */
 .system-stats {
     display: flex;
@@ -346,6 +353,16 @@ a:hover {
 .status-btn.red:hover, .status-btn.red.active {
     border-color: #ef4444;
     background: #fee2e2;
+}
+
+.status-buttons.small {
+    gap: 0.25rem;
+}
+
+.status-buttons.small .status-btn {
+    flex: none;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
 }
 
 textarea {

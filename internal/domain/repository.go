@@ -88,6 +88,6 @@ type AnalyticsRepository interface {
 
 // HealthChecker defines interface for checking endpoint health
 type HealthChecker interface {
-	// Check performs HTTP health check and returns true if healthy
-	Check(ctx context.Context, url string) (bool, error)
+	// Check performs HTTP health check and returns healthy status and response time
+	Check(ctx context.Context, url string) (healthy bool, latencyMs int64, err error)
 }

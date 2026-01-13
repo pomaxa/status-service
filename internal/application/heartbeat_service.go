@@ -47,7 +47,7 @@ func (s *HeartbeatService) CheckAllDependencies(ctx context.Context) error {
 
 // checkDependency performs health check on a single dependency
 func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Dependency) error {
-	healthy, err := s.checker.Check(ctx, dep.HeartbeatURL)
+	healthy, latencyMs, err := s.checker.Check(ctx, dep.HeartbeatURL)
 	if err != nil {
 		return fmt.Errorf("check error: %w", err)
 	}
@@ -56,12 +56,12 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 	var statusChanged bool
 
 	if healthy {
-		statusChanged = dep.RecordCheckSuccess()
+		statusChanged = dep.RecordCheckSuccess(latencyMs)
 	} else {
-		statusChanged = dep.RecordCheckFailure()
+		statusChanged = dep.RecordCheckFailure(latencyMs)
 	}
 
-	// Always update to save LastCheck
+	// Always update to save LastCheck and LastLatency
 	if err := s.depRepo.Update(ctx, dep); err != nil {
 		return fmt.Errorf("failed to update dependency: %w", err)
 	}
@@ -70,9 +70,9 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 	if statusChanged {
 		var message string
 		if healthy {
-			message = "Heartbeat check succeeded, service recovered"
+			message = fmt.Sprintf("Heartbeat check succeeded, service recovered (latency: %dms)", latencyMs)
 		} else {
-			message = fmt.Sprintf("Heartbeat check failed (%d consecutive failures)", dep.ConsecutiveFailures)
+			message = fmt.Sprintf("Heartbeat check failed (%d consecutive failures, latency: %dms)", dep.ConsecutiveFailures, latencyMs)
 		}
 
 		log := domain.NewStatusLog(nil, &dep.ID, oldStatus, dep.Status, message, domain.SourceHeartbeat)

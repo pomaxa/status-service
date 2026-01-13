@@ -68,12 +68,13 @@
                 <th>Status</th>
                 <th>Heartbeat</th>
                 <th>Last Check</th>
+                <th>Latency</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody>
             {{range .Dependencies}}
-            <tr>
+            <tr class="dep-row" data-id="{{.ID}}" data-name="{{.Name}}" data-description="{{.Description}}" data-status="{{.Status.String}}" data-heartbeat-url="{{.HeartbeatURL}}" data-heartbeat-interval="{{.HeartbeatInterval}}">
                 <td>
                     <span class="status-dot {{statusClass .Status}}"></span>
                     {{.Name}}
@@ -97,7 +98,15 @@
                     {{end}}
                 </td>
                 <td>
-                    <button class="btn btn-small" onclick="updateDepStatus({{.ID}})">Update</button>
+                    {{if .HeartbeatURL}}
+                    <span class="latency-value">{{.LastLatency}}ms</span>
+                    {{else}}
+                    -
+                    {{end}}
+                </td>
+                <td>
+                    <button class="btn btn-small" onclick="openDepModal(this.closest('.dep-row'))">Update</button>
+                    <button class="btn btn-small" onclick="openHeartbeatModal(this.closest('.dep-row'))">Heartbeat</button>
                     {{if .HeartbeatURL}}
                     <button class="btn btn-small" onclick="forceCheck({{.ID}})">Check Now</button>
                     {{end}}
@@ -108,6 +117,59 @@
     </table>
 </section>
 {{end}}
+
+<!-- Update Dependency Modal -->
+<div id="depModal" class="modal" style="display:none">
+    <div class="modal-content">
+        <h3>Update Dependency</h3>
+        <form id="depForm" class="admin-form">
+            <input type="hidden" id="depId">
+            <div class="form-row">
+                <input type="text" id="depName" placeholder="Name" required>
+            </div>
+            <div class="form-row">
+                <input type="text" id="depDescription" placeholder="Description (optional)">
+            </div>
+            <div class="form-row">
+                <label>Status:</label>
+                <div class="status-buttons small">
+                    <button type="button" class="status-btn green" data-status="green">Operational</button>
+                    <button type="button" class="status-btn yellow" data-status="yellow">Degraded</button>
+                    <button type="button" class="status-btn red" data-status="red">Outage</button>
+                </div>
+            </div>
+            <div class="form-row">
+                <input type="text" id="depMessage" placeholder="Status change message (optional)">
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Heartbeat Configuration Modal -->
+<div id="heartbeatModal" class="modal" style="display:none">
+    <div class="modal-content">
+        <h3>Configure Heartbeat</h3>
+        <form id="heartbeatForm" class="admin-form">
+            <input type="hidden" id="heartbeatDepId">
+            <div class="form-row">
+                <input type="url" id="heartbeatUrl" placeholder="Health check URL (leave empty to disable)">
+            </div>
+            <div class="form-row">
+                <input type="number" id="heartbeatInterval" placeholder="Interval (seconds)" min="10" value="60">
+            </div>
+            <p class="form-hint">The URL will be checked periodically. HTTP 2xx = healthy, other = unhealthy.</p>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-danger" onclick="clearHeartbeat()">Disable</button>
+                <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 {{if .Logs}}
 <section class="card">
@@ -175,29 +237,81 @@ document.getElementById('statusForm').addEventListener('submit', async (e) => {
     }
 });
 
-async function updateDepStatus(depId) {
-    const status = prompt('Enter status (green, yellow, red):');
-    if (!status) return;
+let modalDepStatus = 'green';
 
-    const message = prompt('Enter message (optional):') || '';
+function openDepModal(row) {
+    document.getElementById('depId').value = row.dataset.id;
+    document.getElementById('depName').value = row.dataset.name;
+    document.getElementById('depDescription').value = row.dataset.description || '';
+    document.getElementById('depMessage').value = '';
+    modalDepStatus = row.dataset.status;
+
+    // Update status buttons
+    document.querySelectorAll('#depModal .status-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.status === modalDepStatus);
+    });
+
+    document.getElementById('depModal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('depModal').style.display = 'none';
+    document.getElementById('heartbeatModal').style.display = 'none';
+}
+
+// Status button handlers in modal
+document.querySelectorAll('#depModal .status-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('#depModal .status-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        modalDepStatus = btn.dataset.status;
+    });
+});
+
+// Close modal on outside click
+document.getElementById('depModal').addEventListener('click', (e) => {
+    if (e.target.id === 'depModal') closeModal();
+});
+
+// Form submission
+document.getElementById('depForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('depId').value;
+    const name = document.getElementById('depName').value;
+    const description = document.getElementById('depDescription').value;
+    const message = document.getElementById('depMessage').value;
 
     try {
-        const res = await fetch(`/api/dependencies/${depId}/status`, {
-            method: 'POST',
+        // Update name/description
+        const updateRes = await fetch(`/api/dependencies/${id}`, {
+            method: 'PUT',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({status, message})
+            body: JSON.stringify({name, description})
         });
 
-        if (res.ok) {
+        if (!updateRes.ok) {
+            const data = await updateRes.json();
+            alert(data.error || 'Failed to update dependency');
+            return;
+        }
+
+        // Update status
+        const statusRes = await fetch(`/api/dependencies/${id}/status`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: modalDepStatus, message})
+        });
+
+        if (statusRes.ok) {
             location.reload();
         } else {
-            const data = await res.json();
+            const data = await statusRes.json();
             alert(data.error || 'Failed to update status');
         }
     } catch (err) {
         alert('Network error');
     }
-}
+});
 
 async function forceCheck(depId) {
     try {
@@ -212,5 +326,66 @@ async function forceCheck(depId) {
         alert('Network error');
     }
 }
+
+// Heartbeat Modal
+function openHeartbeatModal(row) {
+    document.getElementById('heartbeatDepId').value = row.dataset.id;
+    document.getElementById('heartbeatUrl').value = row.dataset.heartbeatUrl || '';
+    document.getElementById('heartbeatInterval').value = row.dataset.heartbeatInterval || '60';
+    document.getElementById('heartbeatModal').style.display = 'flex';
+}
+
+async function clearHeartbeat() {
+    const id = document.getElementById('heartbeatDepId').value;
+    try {
+        const res = await fetch(`/api/dependencies/${id}/heartbeat`, {method: 'DELETE'});
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to clear heartbeat');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+
+document.getElementById('heartbeatForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('heartbeatDepId').value;
+    const url = document.getElementById('heartbeatUrl').value;
+    const interval = parseInt(document.getElementById('heartbeatInterval').value, 10);
+
+    if (!url) {
+        await clearHeartbeat();
+        return;
+    }
+
+    if (!interval || interval < 10) {
+        alert('Interval must be at least 10 seconds');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/dependencies/${id}/heartbeat`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url, interval})
+        });
+
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to configure heartbeat');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+});
+
+document.getElementById('heartbeatModal').addEventListener('click', (e) => {
+    if (e.target.id === 'heartbeatModal') closeModal();
+});
 </script>
 {{end}}

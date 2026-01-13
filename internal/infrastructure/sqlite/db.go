@@ -45,6 +45,7 @@ func (db *DB) Migrate() error {
 	// Add new columns if they don't exist (for existing databases)
 	db.addColumnIfNotExists("systems", "url", "TEXT NOT NULL DEFAULT ''")
 	db.addColumnIfNotExists("systems", "owner", "TEXT NOT NULL DEFAULT ''")
+	db.addColumnIfNotExists("dependencies", "last_latency", "INTEGER NOT NULL DEFAULT 0")
 
 	return nil
 }

@@ -21,8 +21,8 @@ func NewDependencyRepo(db *DB) *DependencyRepo {
 func (r *DependencyRepo) Create(ctx context.Context, dep *domain.Dependency) error {
 	query := `
 		INSERT INTO dependencies (system_id, name, description, status, heartbeat_url,
-			heartbeat_interval, last_check, consecutive_failures, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			heartbeat_interval, last_check, last_latency, consecutive_failures, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	var lastCheck interface{}
@@ -38,6 +38,7 @@ func (r *DependencyRepo) Create(ctx context.Context, dep *domain.Dependency) err
 		nullString(dep.HeartbeatURL),
 		dep.HeartbeatInterval,
 		lastCheck,
+		dep.LastLatency,
 		dep.ConsecutiveFailures,
 		dep.CreatedAt,
 		dep.UpdatedAt,
@@ -59,7 +60,7 @@ func (r *DependencyRepo) Create(ctx context.Context, dep *domain.Dependency) err
 func (r *DependencyRepo) GetByID(ctx context.Context, id int64) (*domain.Dependency, error) {
 	query := `
 		SELECT id, system_id, name, description, status, heartbeat_url,
-			heartbeat_interval, last_check, consecutive_failures, created_at, updated_at
+			heartbeat_interval, last_check, last_latency, consecutive_failures, created_at, updated_at
 		FROM dependencies
 		WHERE id = ?
 	`
@@ -79,7 +80,7 @@ func (r *DependencyRepo) GetByID(ctx context.Context, id int64) (*domain.Depende
 func (r *DependencyRepo) GetBySystemID(ctx context.Context, systemID int64) ([]*domain.Dependency, error) {
 	query := `
 		SELECT id, system_id, name, description, status, heartbeat_url,
-			heartbeat_interval, last_check, consecutive_failures, created_at, updated_at
+			heartbeat_interval, last_check, last_latency, consecutive_failures, created_at, updated_at
 		FROM dependencies
 		WHERE system_id = ?
 		ORDER BY name ASC
@@ -98,7 +99,7 @@ func (r *DependencyRepo) GetBySystemID(ctx context.Context, systemID int64) ([]*
 func (r *DependencyRepo) GetAllWithHeartbeat(ctx context.Context) ([]*domain.Dependency, error) {
 	query := `
 		SELECT id, system_id, name, description, status, heartbeat_url,
-			heartbeat_interval, last_check, consecutive_failures, created_at, updated_at
+			heartbeat_interval, last_check, last_latency, consecutive_failures, created_at, updated_at
 		FROM dependencies
 		WHERE heartbeat_url IS NOT NULL AND heartbeat_url != ''
 	`
@@ -117,7 +118,7 @@ func (r *DependencyRepo) Update(ctx context.Context, dep *domain.Dependency) err
 	query := `
 		UPDATE dependencies
 		SET name = ?, description = ?, status = ?, heartbeat_url = ?,
-			heartbeat_interval = ?, last_check = ?, consecutive_failures = ?, updated_at = ?
+			heartbeat_interval = ?, last_check = ?, last_latency = ?, consecutive_failures = ?, updated_at = ?
 		WHERE id = ?
 	`
 
@@ -133,6 +134,7 @@ func (r *DependencyRepo) Update(ctx context.Context, dep *domain.Dependency) err
 		nullString(dep.HeartbeatURL),
 		dep.HeartbeatInterval,
 		lastCheck,
+		dep.LastLatency,
 		dep.ConsecutiveFailures,
 		dep.UpdatedAt,
 		dep.ID,
@@ -189,6 +191,7 @@ func (r *DependencyRepo) scanDependency(row *sql.Row) (*domain.Dependency, error
 		&heartbeatURL,
 		&dep.HeartbeatInterval,
 		&lastCheck,
+		&dep.LastLatency,
 		&dep.ConsecutiveFailures,
 		&dep.CreatedAt,
 		&dep.UpdatedAt,
@@ -228,6 +231,7 @@ func (r *DependencyRepo) scanDependencies(rows *sql.Rows) ([]*domain.Dependency,
 			&heartbeatURL,
 			&dep.HeartbeatInterval,
 			&lastCheck,
+			&dep.LastLatency,
 			&dep.ConsecutiveFailures,
 			&dep.CreatedAt,
 			&dep.UpdatedAt,

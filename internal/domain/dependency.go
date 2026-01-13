@@ -21,8 +21,9 @@ type Dependency struct {
 	Description         string
 	Status              Status
 	HeartbeatURL        string
-	HeartbeatInterval   int // seconds
+	HeartbeatInterval   int   // seconds
 	LastCheck           time.Time
+	LastLatency         int64 // milliseconds
 	ConsecutiveFailures int
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
@@ -89,10 +90,11 @@ func (d *Dependency) HasHeartbeat() bool {
 	return d.HeartbeatURL != ""
 }
 
-// RecordCheckSuccess records a successful health check
+// RecordCheckSuccess records a successful health check with latency
 // Returns true if status changed
-func (d *Dependency) RecordCheckSuccess() bool {
+func (d *Dependency) RecordCheckSuccess(latencyMs int64) bool {
 	d.LastCheck = time.Now()
+	d.LastLatency = latencyMs
 	d.ConsecutiveFailures = 0
 
 	if d.Status != StatusGreen {
@@ -103,11 +105,12 @@ func (d *Dependency) RecordCheckSuccess() bool {
 	return false
 }
 
-// RecordCheckFailure records a failed health check
+// RecordCheckFailure records a failed health check with latency
 // Returns true if status changed
 // Logic: 1 failure = yellow, 3+ failures = red
-func (d *Dependency) RecordCheckFailure() bool {
+func (d *Dependency) RecordCheckFailure(latencyMs int64) bool {
 	d.LastCheck = time.Now()
+	d.LastLatency = latencyMs
 	d.ConsecutiveFailures++
 
 	oldStatus := d.Status

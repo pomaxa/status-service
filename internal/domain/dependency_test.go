@@ -113,7 +113,7 @@ func TestDependency_RecordCheckSuccess(t *testing.T) {
 	dep.ConsecutiveFailures = 3
 	dep.Status = StatusRed
 
-	changed := dep.RecordCheckSuccess()
+	changed := dep.RecordCheckSuccess(150)
 
 	if dep.ConsecutiveFailures != 0 {
 		t.Errorf("ConsecutiveFailures = %d, want 0", dep.ConsecutiveFailures)
@@ -127,12 +127,15 @@ func TestDependency_RecordCheckSuccess(t *testing.T) {
 	if dep.LastCheck.IsZero() {
 		t.Error("LastCheck should be set")
 	}
+	if dep.LastLatency != 150 {
+		t.Errorf("LastLatency = %d, want 150", dep.LastLatency)
+	}
 }
 
 func TestDependency_RecordCheckSuccess_AlreadyGreen(t *testing.T) {
 	dep, _ := NewDependency(1, "Redis", "Cache")
 
-	changed := dep.RecordCheckSuccess()
+	changed := dep.RecordCheckSuccess(100)
 
 	if changed {
 		t.Error("RecordCheckSuccess should return false when status doesn't change")
@@ -142,7 +145,7 @@ func TestDependency_RecordCheckSuccess_AlreadyGreen(t *testing.T) {
 func TestDependency_RecordCheckFailure_FirstFailure(t *testing.T) {
 	dep, _ := NewDependency(1, "Redis", "Cache")
 
-	changed := dep.RecordCheckFailure()
+	changed := dep.RecordCheckFailure(5000)
 
 	if dep.ConsecutiveFailures != 1 {
 		t.Errorf("ConsecutiveFailures = %d, want 1", dep.ConsecutiveFailures)
@@ -153,14 +156,17 @@ func TestDependency_RecordCheckFailure_FirstFailure(t *testing.T) {
 	if !changed {
 		t.Error("RecordCheckFailure should return true when status changes")
 	}
+	if dep.LastLatency != 5000 {
+		t.Errorf("LastLatency = %d, want 5000", dep.LastLatency)
+	}
 }
 
 func TestDependency_RecordCheckFailure_ThreeFailures(t *testing.T) {
 	dep, _ := NewDependency(1, "Redis", "Cache")
 
-	dep.RecordCheckFailure() // 1st: green -> yellow
-	dep.RecordCheckFailure() // 2nd: yellow -> yellow
-	changed := dep.RecordCheckFailure() // 3rd: yellow -> red
+	dep.RecordCheckFailure(100) // 1st: green -> yellow
+	dep.RecordCheckFailure(200) // 2nd: yellow -> yellow
+	changed := dep.RecordCheckFailure(300) // 3rd: yellow -> red
 
 	if dep.ConsecutiveFailures != 3 {
 		t.Errorf("ConsecutiveFailures = %d, want 3", dep.ConsecutiveFailures)
@@ -177,7 +183,7 @@ func TestDependency_RecordCheckFailure_MoreThanThree(t *testing.T) {
 	dep, _ := NewDependency(1, "Redis", "Cache")
 
 	for i := 0; i < 5; i++ {
-		dep.RecordCheckFailure()
+		dep.RecordCheckFailure(100)
 	}
 
 	if dep.Status != StatusRed {
