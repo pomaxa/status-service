@@ -9,32 +9,63 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+    - run: go mod download
+    - run: go test -v ./...
+    - run: go build -v ./...
 
-    - name: Setup Go
-      uses: actions/setup-go@v5
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-go@v5
       with:
         go-version: '1.24'
 
-    - name: Download dependencies
-      run: go mod download
+    - name: Install build dependencies
+      run: sudo apt-get update && sudo apt-get install -y gcc
 
-    - name: Run tests
-      run: go test -v ./...
+    - name: Build Linux binary
+      env:
+        CGO_ENABLED: 1
+        GOOS: linux
+        GOARCH: amd64
+      run: go build -ldflags="-s -w" -o status-incident-linux-amd64 .
 
-    - name: Build
-      run: go build -v ./...
+    - name: Upload binary artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: status-incident-linux-amd64
+        path: status-incident-linux-amd64
 
   docker:
     runs-on: ubuntu-latest
     needs: test
+    permissions:
+      contents: read
+      packages: write
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-    - name: Build Docker image
-      run: docker build -t status-incident:latest .
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: |
+          ghcr.io/${{ github.repository }}:latest
+          ghcr.io/${{ github.repository }}:${{ github.sha }}
