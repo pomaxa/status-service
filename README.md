@@ -11,12 +11,12 @@ Internal service for monitoring system status and tracking incidents.
 ## Screenshots
 
 ### Dashboard
-Overview of all systems with real-time status indicators, uptime metrics, and component health.
+Overview of all systems with real-time status indicators, uptime metrics, component health, last check time and latency.
 
 ![Dashboard](docs/screenshot-dashboard.png)
 
 ### System Details
-Detailed view of a specific system with status controls, 24h analytics, and dependency management.
+Detailed view with status controls, 24h analytics, dependency management, heartbeat configuration, and latency monitoring.
 
 ![System Details](docs/screenshot-system.png)
 
@@ -41,7 +41,8 @@ System management interface with backup/restore functionality, system creation, 
 - **Dependencies** - track components of each system (DB, Redis, API, etc.)
 - **Traffic Light Status** - green (operational), yellow (degraded), red (outage)
 - **Manual Updates** - change status with comments
-- **Heartbeat Monitoring** - automatic URL health checks every minute
+- **Heartbeat Monitoring** - automatic URL health checks with latency tracking
+- **Latency Monitoring** - response time tracking for each health check
 - **Change History** - complete log of all status changes
 - **Analytics** - uptime/SLA, incident count, MTTR
 
@@ -57,13 +58,18 @@ System management interface with backup/restore functionality, system creation, 
 ### Using Docker (recommended)
 
 ```bash
-# Build and run with docker-compose
-docker-compose up -d
+# Pull from GitHub Container Registry
+docker pull ghcr.io/pomaxa/status-service:latest
+docker run -p 8080:8080 -v status-data:/app/data ghcr.io/pomaxa/status-service:latest
 
-# Or build manually
+# Or build locally
 docker build -t status-incident .
 docker run -p 8080:8080 -v status-data:/app/data status-incident
 ```
+
+### Download Binary
+
+Pre-built Linux binary (amd64) available from [GitHub Actions](https://github.com/pomaxa/status-service/actions) artifacts.
 
 ### Local Build
 
