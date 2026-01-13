@@ -50,7 +50,12 @@
                     <span class="status-dot {{statusClass .Status}}"></span>
                     <span class="dep-name">{{.Name}}</span>
                     {{if .HeartbeatURL}}
-                    <span class="heartbeat-badge" title="Auto-monitoring enabled">HB</span>
+                    <span class="heartbeat-info">
+                        {{if not .LastCheck.IsZero}}
+                        <span class="last-check" title="Last check: {{.LastCheck.Format "2006-01-02 15:04:05"}}">{{.LastCheck.Format "15:04"}}</span>
+                        <span class="latency-value">{{.LastLatency}}ms</span>
+                        {{end}}
+                    </span>
                     {{end}}
                 </li>
                 {{end}}

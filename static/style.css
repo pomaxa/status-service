@@ -271,6 +271,22 @@ a:hover {
     font-weight: 500;
 }
 
+.heartbeat-info {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-left: auto;
+}
+
+.last-check {
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.dep-item .latency-value {
+    font-size: 0.75rem;
+}
+
 /* System Stats */
 .system-stats {
     display: flex;
