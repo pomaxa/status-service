@@ -1,10 +1,11 @@
 # Status Incident Service
 
+[![Release](https://img.shields.io/github/v/release/pomaxa/status-service?style=flat)](https://github.com/pomaxa/status-service/releases)
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev/)
 [![CI](https://github.com/pomaxa/status-service/actions/workflows/ci.yml/badge.svg)](https://github.com/pomaxa/status-service/actions)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=flat&logo=sqlite&logoColor=white)](https://sqlite.org/)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat&logo=docker&logoColor=white)](Dockerfile)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat&logo=docker&logoColor=white)](https://ghcr.io/pomaxa/status-service)
 
 Internal service for monitoring system status and tracking incidents.
 
@@ -45,6 +46,9 @@ System management interface with backup/restore functionality, system creation, 
 - **Latency Monitoring** - response time tracking for each health check
 - **Change History** - complete log of all status changes
 - **Analytics** - uptime/SLA, incident count, MTTR
+- **Export/Import** - backup and restore all data via API
+- **Versioned Migrations** - safe database upgrades with automatic backup
+- **Smart Auto-refresh** - dashboard updates without interrupting form editing
 
 ## Tech Stack
 
@@ -59,17 +63,16 @@ System management interface with backup/restore functionality, system creation, 
 
 ```bash
 # Pull from GitHub Container Registry
-docker pull ghcr.io/pomaxa/status-service:latest
-docker run -p 8080:8080 -v status-data:/app/data ghcr.io/pomaxa/status-service:latest
+docker pull ghcr.io/pomaxa/status-service:v1.0.0
+docker run -p 8080:8080 -v status-data:/app/data ghcr.io/pomaxa/status-service:v1.0.0
 
-# Or build locally
-docker build -t status-incident .
-docker run -p 8080:8080 -v status-data:/app/data status-incident
+# Or use latest
+docker pull ghcr.io/pomaxa/status-service:latest
 ```
 
 ### Download Binary
 
-Pre-built Linux binary (amd64) available from [GitHub Actions](https://github.com/pomaxa/status-service/actions) artifacts.
+Pre-built Linux binary (amd64) available from [GitHub Releases](https://github.com/pomaxa/status-service/releases).
 
 ### Local Build
 
@@ -359,6 +362,22 @@ The heartbeat checker sends requests with:
 - **Timeout:** 10 seconds
 - **User-Agent:** `StatusIncident-HealthChecker/1.0`
 - **Redirects:** Follows up to 10 redirects
+
+## Documentation
+
+- [Health Check Implementation Guide](docs/HEALTHCHECK_GUIDE.md) - How to implement health endpoints for your services
+- [Upgrade Guide](docs/UPGRADE.md) - Safe upgrade process with automatic backups
+
+## Version Info
+
+Check application version:
+```bash
+./status-incident -version
+# Status Incident Service
+#   Version:    v1.0.0
+#   Commit:     abc123
+#   Build time: 2024-01-15_10:30:00
+```
 
 ## License
 
