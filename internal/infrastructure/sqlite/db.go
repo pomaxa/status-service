@@ -3,6 +3,11 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -10,6 +15,75 @@ import (
 // DB wraps sql.DB with application-specific methods
 type DB struct {
 	*sql.DB
+	path string
+}
+
+// Migration represents a database migration
+type Migration struct {
+	Version int
+	Name    string
+	SQL     string
+}
+
+// migrations is the list of all migrations in order
+var migrations = []Migration{
+	{
+		Version: 1,
+		Name:    "initial_schema",
+		SQL: `
+CREATE TABLE IF NOT EXISTS systems (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    owner TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'green' CHECK(status IN ('green', 'yellow', 'red')),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS dependencies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    system_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'green' CHECK(status IN ('green', 'yellow', 'red')),
+    heartbeat_url TEXT,
+    heartbeat_interval INTEGER NOT NULL DEFAULT 0,
+    last_check DATETIME,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    last_latency INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (system_id) REFERENCES systems(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS status_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    system_id INTEGER,
+    dependency_id INTEGER,
+    old_status TEXT NOT NULL CHECK(old_status IN ('green', 'yellow', 'red')),
+    new_status TEXT NOT NULL CHECK(new_status IN ('green', 'yellow', 'red')),
+    message TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual' CHECK(source IN ('manual', 'heartbeat')),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (system_id) REFERENCES systems(id) ON DELETE SET NULL,
+    FOREIGN KEY (dependency_id) REFERENCES dependencies(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_dependencies_system_id ON dependencies(system_id);
+CREATE INDEX IF NOT EXISTS idx_status_log_system_id ON status_log(system_id);
+CREATE INDEX IF NOT EXISTS idx_status_log_dependency_id ON status_log(dependency_id);
+CREATE INDEX IF NOT EXISTS idx_status_log_created_at ON status_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_dependencies_heartbeat ON dependencies(heartbeat_url) WHERE heartbeat_url IS NOT NULL AND heartbeat_url != '';
+`,
+	},
+	// Future migrations go here:
+	// {
+	// 	Version: 2,
+	// 	Name:    "add_some_feature",
+	// 	SQL:     "ALTER TABLE ...",
+	// },
 }
 
 // New creates a new SQLite database connection
@@ -24,93 +98,127 @@ func New(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	return &DB{DB: db}, nil
+	return &DB{DB: db, path: dbPath}, nil
 }
 
-// Migrate runs database migrations
+// Migrate runs database migrations with version tracking and automatic backup
 func (db *DB) Migrate() error {
-	migrations := []string{
-		createSystemsTable,
-		createDependenciesTable,
-		createStatusLogTable,
-		createIndexes,
+	// Create schema_migrations table if not exists
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create schema_migrations table: %w", err)
 	}
 
-	for _, migration := range migrations {
-		if _, err := db.Exec(migration); err != nil {
-			return fmt.Errorf("migration failed: %w", err)
+	// Get current schema version
+	currentVersion := db.getCurrentVersion()
+
+	// Find pending migrations
+	var pending []Migration
+	for _, m := range migrations {
+		if m.Version > currentVersion {
+			pending = append(pending, m)
 		}
 	}
 
-	// Add new columns if they don't exist (for existing databases)
-	db.addColumnIfNotExists("systems", "url", "TEXT NOT NULL DEFAULT ''")
-	db.addColumnIfNotExists("systems", "owner", "TEXT NOT NULL DEFAULT ''")
-	db.addColumnIfNotExists("dependencies", "last_latency", "INTEGER NOT NULL DEFAULT 0")
+	if len(pending) == 0 {
+		return nil // No migrations to apply
+	}
 
+	// Backup database before applying migrations
+	if currentVersion > 0 {
+		backupPath, err := db.backup()
+		if err != nil {
+			return fmt.Errorf("failed to backup database before migration: %w", err)
+		}
+		log.Printf("Database backed up to: %s", backupPath)
+	}
+
+	// Apply pending migrations
+	for _, m := range pending {
+		log.Printf("Applying migration %d: %s", m.Version, m.Name)
+
+		if _, err := db.Exec(m.SQL); err != nil {
+			return fmt.Errorf("migration %d (%s) failed: %w", m.Version, m.Name, err)
+		}
+
+		// Record migration
+		_, err := db.Exec(
+			"INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
+			m.Version, m.Name,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to record migration %d: %w", m.Version, err)
+		}
+	}
+
+	log.Printf("Applied %d migration(s), schema version: %d", len(pending), pending[len(pending)-1].Version)
 	return nil
 }
 
-// addColumnIfNotExists adds a column to a table if it doesn't exist
-func (db *DB) addColumnIfNotExists(table, column, definition string) {
-	// Check if column exists
-	query := fmt.Sprintf("SELECT %s FROM %s LIMIT 1", column, table)
-	_, err := db.Exec(query)
+// getCurrentVersion returns the current schema version (0 if no migrations applied)
+func (db *DB) getCurrentVersion() int {
+	var version int
+	err := db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_migrations").Scan(&version)
 	if err != nil {
-		// Column doesn't exist, add it
-		alter := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition)
-		db.Exec(alter)
+		// Table might not exist yet for legacy databases
+		return 0
 	}
+	return version
 }
 
-const createSystemsTable = `
-CREATE TABLE IF NOT EXISTS systems (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    url TEXT NOT NULL DEFAULT '',
-    owner TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'green' CHECK(status IN ('green', 'yellow', 'red')),
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-`
+// backup creates a backup of the database file
+func (db *DB) backup() (string, error) {
+	timestamp := time.Now().Format("20060102-150405")
+	backupPath := fmt.Sprintf("%s.backup-%s", db.path, timestamp)
 
-const createDependenciesTable = `
-CREATE TABLE IF NOT EXISTS dependencies (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    system_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'green' CHECK(status IN ('green', 'yellow', 'red')),
-    heartbeat_url TEXT,
-    heartbeat_interval INTEGER NOT NULL DEFAULT 0,
-    last_check DATETIME,
-    consecutive_failures INTEGER NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (system_id) REFERENCES systems(id) ON DELETE CASCADE
-);
-`
+	// Close any pending operations
+	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		log.Printf("Warning: WAL checkpoint failed: %v", err)
+	}
 
-const createStatusLogTable = `
-CREATE TABLE IF NOT EXISTS status_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    system_id INTEGER,
-    dependency_id INTEGER,
-    old_status TEXT NOT NULL CHECK(old_status IN ('green', 'yellow', 'red')),
-    new_status TEXT NOT NULL CHECK(new_status IN ('green', 'yellow', 'red')),
-    message TEXT NOT NULL DEFAULT '',
-    source TEXT NOT NULL DEFAULT 'manual' CHECK(source IN ('manual', 'heartbeat')),
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (system_id) REFERENCES systems(id) ON DELETE SET NULL,
-    FOREIGN KEY (dependency_id) REFERENCES dependencies(id) ON DELETE SET NULL
-);
-`
+	// Copy the database file
+	if err := copyFile(db.path, backupPath); err != nil {
+		return "", err
+	}
 
-const createIndexes = `
-CREATE INDEX IF NOT EXISTS idx_dependencies_system_id ON dependencies(system_id);
-CREATE INDEX IF NOT EXISTS idx_status_log_system_id ON status_log(system_id);
-CREATE INDEX IF NOT EXISTS idx_status_log_dependency_id ON status_log(dependency_id);
-CREATE INDEX IF NOT EXISTS idx_status_log_created_at ON status_log(created_at);
-CREATE INDEX IF NOT EXISTS idx_dependencies_heartbeat ON dependencies(heartbeat_url) WHERE heartbeat_url IS NOT NULL AND heartbeat_url != '';
-`
+	return backupPath, nil
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer sourceFile.Close()
+
+	// Create destination directory if needed
+	if dir := filepath.Dir(dst); dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create destination directory: %w", err)
+		}
+	}
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	return destFile.Sync()
+}
+
+// SchemaVersion returns the current schema version
+func (db *DB) SchemaVersion() int {
+	return db.getCurrentVersion()
+}

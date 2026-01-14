@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -25,15 +26,32 @@ import (
 	_ "status-incident/docs" // Swagger docs
 )
 
+// Build information (set via ldflags)
+var (
+	Version   = "dev"
+	Commit    = "unknown"
+	BuildTime = "unknown"
+)
+
 func main() {
 	// Parse flags
 	addr := flag.String("addr", ":8080", "HTTP server address")
 	dbPath := flag.String("db", "status.db", "SQLite database path")
 	templateDir := flag.String("templates", "templates", "Templates directory")
 	heartbeatInterval := flag.Duration("heartbeat", 60*time.Second, "Heartbeat check interval")
+	showVersion := flag.Bool("version", false, "Show version and exit")
 	flag.Parse()
 
-	log.Printf("Starting Status Incident Service...")
+	// Show version and exit
+	if *showVersion {
+		fmt.Printf("Status Incident Service\n")
+		fmt.Printf("  Version:    %s\n", Version)
+		fmt.Printf("  Commit:     %s\n", Commit)
+		fmt.Printf("  Build time: %s\n", BuildTime)
+		os.Exit(0)
+	}
+
+	log.Printf("Starting Status Incident Service v%s (commit: %s)", Version, Commit)
 
 	// Initialize database
 	db, err := sqlite.New(*dbPath)

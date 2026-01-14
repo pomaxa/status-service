@@ -3,6 +3,11 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
+# Build arguments for version info
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+
 # Install build dependencies
 RUN apk add --no-cache gcc musl-dev
 
@@ -13,8 +18,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=1 GOOS=linux go build -o status-incident .
+# Build the binary with version info
+RUN CGO_ENABLED=1 GOOS=linux go build \
+    -ldflags="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildTime=${BUILD_TIME}" \
+    -o status-incident .
 
 # Run stage
 FROM alpine:latest

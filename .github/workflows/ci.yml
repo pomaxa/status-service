@@ -36,7 +36,9 @@ jobs:
         CGO_ENABLED: 1
         GOOS: linux
         GOARCH: amd64
-      run: go build -ldflags="-s -w" -o status-incident-linux-amd64 .
+      run: |
+        BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
+        go build -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME:-dev} -X main.Commit=${GITHUB_SHA:-unknown} -X main.BuildTime=${BUILD_TIME}" -o status-incident-linux-amd64 .
 
     - name: Upload binary artifact
       uses: actions/upload-artifact@v4
@@ -66,6 +68,10 @@ jobs:
       with:
         context: .
         push: ${{ github.event_name != 'pull_request' }}
+        build-args: |
+          VERSION=${{ github.ref_name }}
+          COMMIT=${{ github.sha }}
+          BUILD_TIME=${{ github.event.head_commit.timestamp }}
         tags: |
           ghcr.io/${{ github.repository }}:latest
           ghcr.io/${{ github.repository }}:${{ github.sha }}
