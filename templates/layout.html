@@ -20,8 +20,50 @@
         {{block "content" .}}{{end}}
     </main>
     <script>
-        // Auto-refresh every 30 seconds
-        setTimeout(() => location.reload(), 30000);
+        // Auto-refresh every 30 seconds (pauses when user is typing)
+        let refreshTimer = null;
+        let isUserActive = false;
+
+        function startRefreshTimer() {
+            if (!isUserActive && !refreshTimer) {
+                refreshTimer = setTimeout(() => location.reload(), 30000);
+            }
+        }
+
+        function stopRefreshTimer() {
+            if (refreshTimer) {
+                clearTimeout(refreshTimer);
+                refreshTimer = null;
+            }
+        }
+
+        // Pause refresh when user interacts with forms
+        document.addEventListener('focusin', (e) => {
+            if (e.target.matches('input, textarea, select, button')) {
+                isUserActive = true;
+                stopRefreshTimer();
+            }
+        });
+
+        document.addEventListener('focusout', (e) => {
+            if (e.target.matches('input, textarea, select, button')) {
+                isUserActive = false;
+                startRefreshTimer();
+            }
+        });
+
+        // Also pause when modal is open
+        const observer = new MutationObserver(() => {
+            const modalOpen = document.querySelector('.modal[style*="flex"]');
+            if (modalOpen) {
+                isUserActive = true;
+                stopRefreshTimer();
+            }
+        });
+        observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['style'] });
+
+        // Start initial timer
+        startRefreshTimer();
     </script>
     {{block "scripts" .}}{{end}}
 </body>
