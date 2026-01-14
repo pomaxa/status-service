@@ -2,6 +2,32 @@
 
 This guide describes how to safely upgrade Status Incident Service without losing data.
 
+## Version History
+
+| Version | Schema | Changes |
+|---------|--------|---------|
+| v1.0.1  | 1      | Fix auto-refresh interrupting form editing |
+| v1.0.0  | 1      | Initial stable release |
+
+## Upgrading Between Versions
+
+### v1.0.0 → v1.0.1
+
+**No database changes.** Safe to upgrade without any special steps.
+
+```bash
+# Docker
+docker pull ghcr.io/pomaxa/status-service:v1.0.1
+docker-compose down && docker-compose up -d
+
+# Binary
+curl -LO https://github.com/pomaxa/status-service/releases/download/v1.0.1/status-incident-linux-amd64
+```
+
+Changes:
+- Fixed: Auto-refresh no longer interrupts form editing
+- Fixed: Modal dialogs don't get closed by auto-refresh
+
 ## How Updates Work
 
 ### Automatic Backup
