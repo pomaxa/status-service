@@ -98,4 +98,25 @@ func TestStatus_Severity(t *testing.T) {
 	if StatusYellow.Severity() >= StatusRed.Severity() {
 		t.Error("Yellow should have lower severity than Red")
 	}
+
+	// Test exact values
+	tests := []struct {
+		status   Status
+		expected int
+	}{
+		{StatusGreen, 0},
+		{StatusYellow, 1},
+		{StatusRed, 2},
+		{Status("invalid"), -1},
+		{Status(""), -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.status), func(t *testing.T) {
+			result := tt.status.Severity()
+			if result != tt.expected {
+				t.Errorf("Status(%q).Severity() = %d, want %d", tt.status, result, tt.expected)
+			}
+		})
+	}
 }

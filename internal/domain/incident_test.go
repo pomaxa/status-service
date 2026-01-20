@@ -337,3 +337,46 @@ func TestNewIncidentUpdate(t *testing.T) {
 		})
 	}
 }
+
+func TestSeverityEmoji(t *testing.T) {
+	tests := []struct {
+		severity IncidentSeverity
+		expected string
+	}{
+		{SeverityMinor, "⚠️"},
+		{SeverityMajor, "🔶"},
+		{SeverityCritical, "🔴"},
+		{IncidentSeverity("unknown"), "❓"},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.severity), func(t *testing.T) {
+			result := SeverityEmoji(tt.severity)
+			if result != tt.expected {
+				t.Errorf("SeverityEmoji(%q) = %q, want %q", tt.severity, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIncidentStatusEmoji(t *testing.T) {
+	tests := []struct {
+		status   IncidentStatus
+		expected string
+	}{
+		{IncidentInvestigating, "🔍"},
+		{IncidentIdentified, "🎯"},
+		{IncidentMonitoring, "👀"},
+		{IncidentResolved, "✅"},
+		{IncidentStatus("unknown"), "❓"},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.status), func(t *testing.T) {
+			result := IncidentStatusEmoji(tt.status)
+			if result != tt.expected {
+				t.Errorf("IncidentStatusEmoji(%q) = %q, want %q", tt.status, result, tt.expected)
+			}
+		})
+	}
+}

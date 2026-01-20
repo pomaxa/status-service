@@ -172,6 +172,13 @@ func TestWebhook_Update(t *testing.T) {
 			wantErr:     true,
 			errContains: "invalid webhook URL",
 		},
+		{
+			name:    "invalid type defaults to generic",
+			newName: "Updated",
+			newURL:  "https://example.com/updated",
+			newType: WebhookType("invalid"),
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

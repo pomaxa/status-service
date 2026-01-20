@@ -220,3 +220,272 @@ func TestDependency_NeedsCheck(t *testing.T) {
 		t.Error("Dependency checked more than interval ago should need check")
 	}
 }
+
+func TestDependency_SetHeartbeatConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  HeartbeatConfig
+		wantErr bool
+	}{
+		{
+			name: "valid GET config",
+			config: HeartbeatConfig{
+				URL:      "https://api.example.com/health",
+				Interval: 60,
+				Method:   "GET",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid POST with body",
+			config: HeartbeatConfig{
+				URL:      "https://api.example.com/health",
+				Interval: 30,
+				Method:   "POST",
+				Body:     `{"check": "deep"}`,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid with headers",
+			config: HeartbeatConfig{
+				URL:      "https://api.example.com/health",
+				Interval: 60,
+				Headers:  map[string]string{"Authorization": "Bearer token"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid expect status",
+			config: HeartbeatConfig{
+				URL:          "https://api.example.com/health",
+				Interval:     60,
+				ExpectStatus: "200,201",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid expect status wildcard",
+			config: HeartbeatConfig{
+				URL:          "https://api.example.com/health",
+				Interval:     60,
+				ExpectStatus: "2xx",
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty method defaults to GET",
+			config: HeartbeatConfig{
+				URL:      "https://api.example.com/health",
+				Interval: 60,
+				Method:   "",
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid method",
+			config: HeartbeatConfig{
+				URL:      "https://api.example.com/health",
+				Interval: 60,
+				Method:   "INVALID",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid expect status format",
+			config: HeartbeatConfig{
+				URL:          "https://api.example.com/health",
+				Interval:     60,
+				ExpectStatus: "abc",
+			},
+			wantErr: true,
+		},
+		{
+			name: "ftp scheme not allowed",
+			config: HeartbeatConfig{
+				URL:      "ftp://files.example.com/health",
+				Interval: 60,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dep, _ := NewDependency(1, "Test", "")
+			err := dep.SetHeartbeatConfig(tt.config)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if dep.HeartbeatURL != tt.config.URL {
+				t.Errorf("expected URL %q, got %q", tt.config.URL, dep.HeartbeatURL)
+			}
+		})
+	}
+}
+
+func TestIsValidExpectStatus(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"single code", "200", true},
+		{"multiple codes", "200,201,204", true},
+		{"wildcard 2xx", "2xx", true},
+		{"wildcard 3xx", "3xx", true},
+		{"wildcard 4xx", "4xx", true},
+		{"wildcard 5xx", "5xx", true},
+		{"mixed", "200,3xx", true},
+		{"with spaces", " 200 , 201 ", true},
+		{"invalid wildcard 0xx", "0xx", false},
+		{"invalid wildcard 6xx", "6xx", false},
+		{"letters", "abc", false},
+		{"empty part", "200,,201", false},
+		{"only comma", ",", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isValidExpectStatus(tt.input)
+			if result != tt.expected {
+				t.Errorf("isValidExpectStatus(%q) = %v, want %v", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDependency_GetHeartbeatConfig(t *testing.T) {
+	dep, _ := NewDependency(1, "Test", "")
+	dep.SetHeartbeatConfig(HeartbeatConfig{
+		URL:          "https://api.example.com/health",
+		Interval:     60,
+		Method:       "POST",
+		Headers:      map[string]string{"Authorization": "Bearer token"},
+		Body:         `{"test": true}`,
+		ExpectStatus: "2xx",
+		ExpectBody:   `"status":\s*"ok"`,
+	})
+
+	config := dep.GetHeartbeatConfig()
+
+	if config.URL != "https://api.example.com/health" {
+		t.Errorf("expected URL, got %q", config.URL)
+	}
+	if config.Interval != 60 {
+		t.Errorf("expected interval 60, got %d", config.Interval)
+	}
+	if config.Method != "POST" {
+		t.Errorf("expected method POST, got %q", config.Method)
+	}
+	if config.Headers["Authorization"] != "Bearer token" {
+		t.Error("expected Authorization header")
+	}
+	if config.Body != `{"test": true}` {
+		t.Errorf("expected body, got %q", config.Body)
+	}
+	if config.ExpectStatus != "2xx" {
+		t.Errorf("expected status 2xx, got %q", config.ExpectStatus)
+	}
+	if config.ExpectBody != `"status":\s*"ok"` {
+		t.Errorf("expected body pattern, got %q", config.ExpectBody)
+	}
+}
+
+func TestDependency_GetHeartbeatConfig_DefaultMethod(t *testing.T) {
+	dep, _ := NewDependency(1, "Test", "")
+	dep.HeartbeatURL = "https://example.com"
+	dep.HeartbeatInterval = 30
+	// HeartbeatMethod is empty
+
+	config := dep.GetHeartbeatConfig()
+
+	if config.Method != "GET" {
+		t.Errorf("expected default method GET, got %q", config.Method)
+	}
+}
+
+func TestDependency_UpdateStatus(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  Status
+		wantErr bool
+	}{
+		{"green status", StatusGreen, false},
+		{"yellow status", StatusYellow, false},
+		{"red status", StatusRed, false},
+		{"invalid status", Status("invalid"), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dep, _ := NewDependency(1, "Test", "")
+			dep.ConsecutiveFailures = 5 // should be reset
+
+			err := dep.UpdateStatus(tt.status)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if dep.Status != tt.status {
+				t.Errorf("expected status %q, got %q", tt.status, dep.Status)
+			}
+			if dep.ConsecutiveFailures != 0 {
+				t.Errorf("ConsecutiveFailures should be reset, got %d", dep.ConsecutiveFailures)
+			}
+		})
+	}
+}
+
+func TestDependency_Update(t *testing.T) {
+	tests := []struct {
+		name        string
+		newName     string
+		newDesc     string
+		wantErr     bool
+	}{
+		{"valid update", "New Name", "New Description", false},
+		{"empty name", "", "Description", true},
+		{"whitespace name", "   ", "Description", true},
+		{"empty description ok", "Name", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dep, _ := NewDependency(1, "Original", "Original Desc")
+			err := dep.Update(tt.newName, tt.newDesc)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if dep.Name != tt.newName {
+				t.Errorf("expected name %q, got %q", tt.newName, dep.Name)
+			}
+		})
+	}
+}
