@@ -12,29 +12,44 @@ Internal service for monitoring system status and tracking incidents.
 ## Screenshots
 
 ### Dashboard
-Overview of all systems with real-time status indicators, uptime metrics, component health, last check time and latency.
+Overview of all systems with real-time status indicators, uptime metrics, and incident counts.
 
-![Dashboard](docs/screenshot-dashboard.png)
-
-### System Details
-Detailed view with status controls, 24h analytics, dependency management, heartbeat configuration, and latency monitoring.
-
-![System Details](docs/screenshot-system.png)
-
-### Analytics
-Performance metrics including uptime percentage, availability, incident counts, and SLA reference table.
-
-![Analytics](docs/screenshot-analytics.png)
-
-### Activity Log
-Complete history of all status changes with timestamps, source tracking (manual/heartbeat), and messages.
-
-![Activity Log](docs/screenshot-logs.png)
+![Dashboard](screenshots/01-homepage.png)
 
 ### Administration
-System management interface with backup/restore functionality, system creation, and dependency configuration.
+System management interface with backup/restore, webhook configuration, and system creation.
 
-![Admin](docs/screenshot-admin.png)
+![Admin](screenshots/02-admin.png)
+
+### Public Status Page
+Read-only public page for external stakeholders to view system status.
+
+![Public](screenshots/03-public.png)
+
+### Incident Management
+Track and manage incidents with status updates, severity levels, and resolution workflow.
+
+![Incidents](screenshots/04-incidents.png)
+
+### Maintenance Windows
+Schedule planned maintenance to exclude from SLA calculations.
+
+![Maintenance](screenshots/05-maintenance.png)
+
+### SLA Reports
+Generate and view SLA compliance reports with breach tracking.
+
+![SLA Reports](screenshots/06-sla.png)
+
+### API Documentation
+Interactive Swagger documentation for the REST API.
+
+![API Docs](screenshots/07-api-docs.png)
+
+### Activity Log
+Complete history of all status changes with timestamps and source tracking.
+
+![History](screenshots/08-history.png)
 
 ## Features
 
@@ -43,7 +58,13 @@ System management interface with backup/restore functionality, system creation, 
 - **Traffic Light Status** - green (operational), yellow (degraded), red (outage)
 - **Manual Updates** - change status with comments
 - **Heartbeat Monitoring** - automatic URL health checks with latency tracking
-- **Latency Monitoring** - response time tracking for each health check
+- **Latency Graphs** - visual latency history and uptime heatmaps
+- **Incident Management** - create, track, and resolve incidents with timeline updates
+- **Maintenance Windows** - schedule planned downtime excluded from SLA
+- **SLA Reports** - generate compliance reports with breach tracking
+- **Webhook Notifications** - Slack, Discord, Telegram, Microsoft Teams, generic HTTP
+- **Public Status Page** - read-only page for external stakeholders
+- **API Keys** - secure API access with scoped permissions
 - **Change History** - complete log of all status changes
 - **Analytics** - uptime/SLA, incident count, MTTR
 - **Export/Import** - backup and restore all data via API
@@ -109,9 +130,14 @@ Swagger UI is available at http://localhost:8080/swagger/
 |------|-----|-------------|
 | Dashboard | `/` | Overview of all systems |
 | System | `/systems/{id}` | System details and dependencies |
-| Admin | `/admin` | Manage systems |
+| Public | `/public` | Public status page (read-only) |
+| Incidents | `/incidents` | Incident management |
+| Maintenance | `/maintenance` | Scheduled maintenance |
+| SLA | `/sla` | SLA reports and breaches |
+| Admin | `/admin` | Manage systems and webhooks |
 | Logs | `/logs` | Change history |
 | Analytics | `/analytics` | Statistics and SLA |
+| API Docs | `/api-docs` | Interactive API documentation |
 
 ## REST API
 
