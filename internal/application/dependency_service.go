@@ -79,8 +79,16 @@ func (s *DependencyService) UpdateDependency(ctx context.Context, id int64, name
 	return dep, nil
 }
 
-// SetHeartbeat configures heartbeat checking for a dependency
+// SetHeartbeat configures heartbeat checking for a dependency (legacy method)
 func (s *DependencyService) SetHeartbeat(ctx context.Context, id int64, url string, interval int) (*domain.Dependency, error) {
+	return s.SetHeartbeatConfig(ctx, id, domain.HeartbeatConfig{
+		URL:      url,
+		Interval: interval,
+	})
+}
+
+// SetHeartbeatConfig configures heartbeat checking with advanced options
+func (s *DependencyService) SetHeartbeatConfig(ctx context.Context, id int64, config domain.HeartbeatConfig) (*domain.Dependency, error) {
 	dep, err := s.depRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dependency: %w", err)
@@ -89,7 +97,7 @@ func (s *DependencyService) SetHeartbeat(ctx context.Context, id int64, url stri
 		return nil, fmt.Errorf("dependency not found: %d", id)
 	}
 
-	if err := dep.SetHeartbeat(url, interval); err != nil {
+	if err := dep.SetHeartbeatConfig(config); err != nil {
 		return nil, fmt.Errorf("invalid heartbeat config: %w", err)
 	}
 

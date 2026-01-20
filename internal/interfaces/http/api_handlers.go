@@ -30,8 +30,13 @@ type createDependencyRequest struct {
 }
 
 type setHeartbeatRequest struct {
-	URL      string `json:"url"`
-	Interval int    `json:"interval"`
+	URL          string            `json:"url"`
+	Interval     int               `json:"interval"`
+	Method       string            `json:"method,omitempty"`       // GET, POST, PUT, HEAD
+	Headers      map[string]string `json:"headers,omitempty"`      // custom headers
+	Body         string            `json:"body,omitempty"`         // request body for POST/PUT
+	ExpectStatus string            `json:"expect_status,omitempty"` // "200", "200,201", "2xx"
+	ExpectBody   string            `json:"expect_body,omitempty"`  // regex pattern
 }
 
 type errorResponse struct {
@@ -381,7 +386,17 @@ func (s *Server) apiSetHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dep, err := s.depService.SetHeartbeat(r.Context(), id, req.URL, req.Interval)
+	config := domain.HeartbeatConfig{
+		URL:          req.URL,
+		Interval:     req.Interval,
+		Method:       req.Method,
+		Headers:      req.Headers,
+		Body:         req.Body,
+		ExpectStatus: req.ExpectStatus,
+		ExpectBody:   req.ExpectBody,
+	}
+
+	dep, err := s.depService.SetHeartbeatConfig(r.Context(), id, config)
 	if err != nil {
 		s.respondError(w, http.StatusBadRequest, err.Error())
 		return

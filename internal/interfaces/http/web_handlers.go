@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"path/filepath"
@@ -190,6 +191,16 @@ func (s *Server) getTemplateFuncs() template.FuncMap {
 		},
 		"formatPercent": func(p float64) string {
 			return formatPercent(p)
+		},
+		"headersJSON": func(headers map[string]string) string {
+			if len(headers) == 0 {
+				return ""
+			}
+			data, err := json.Marshal(headers)
+			if err != nil {
+				return ""
+			}
+			return string(data)
 		},
 	}
 }

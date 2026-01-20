@@ -86,10 +86,20 @@ type AnalyticsRepository interface {
 	GetOverallAnalytics(ctx context.Context, start, end time.Time) (*Analytics, error)
 }
 
+// HealthCheckResult contains the result of a health check
+type HealthCheckResult struct {
+	Healthy    bool
+	LatencyMs  int64
+	StatusCode int
+	Error      error
+}
+
 // HealthChecker defines interface for checking endpoint health
 type HealthChecker interface {
 	// Check performs HTTP health check and returns healthy status and response time
 	Check(ctx context.Context, url string) (healthy bool, latencyMs int64, err error)
+	// CheckWithConfig performs HTTP health check with advanced configuration
+	CheckWithConfig(ctx context.Context, config HeartbeatConfig) HealthCheckResult
 }
 
 // WebhookRepository defines operations for Webhook persistence

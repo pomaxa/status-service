@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"status-incident/internal/domain"
 )
@@ -21,14 +22,18 @@ func NewDependencyRepo(db *DB) *DependencyRepo {
 func (r *DependencyRepo) Create(ctx context.Context, dep *domain.Dependency) error {
 	query := `
 		INSERT INTO dependencies (system_id, name, description, status, heartbeat_url,
-			heartbeat_interval, last_check, last_latency, consecutive_failures, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			heartbeat_interval, heartbeat_method, heartbeat_headers, heartbeat_body,
+			heartbeat_expect_status, heartbeat_expect_body, last_check, last_latency,
+			last_status_code, consecutive_failures, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	var lastCheck interface{}
 	if !dep.LastCheck.IsZero() {
 		lastCheck = dep.LastCheck
 	}
+
+	headersJSON := encodeHeaders(dep.HeartbeatHeaders)
 
 	result, err := r.db.ExecContext(ctx, query,
 		dep.SystemID,
@@ -37,8 +42,14 @@ func (r *DependencyRepo) Create(ctx context.Context, dep *domain.Dependency) err
 		dep.Status.String(),
 		nullString(dep.HeartbeatURL),
 		dep.HeartbeatInterval,
+		nullString(dep.HeartbeatMethod),
+		headersJSON,
+		dep.HeartbeatBody,
+		dep.HeartbeatExpectStatus,
+		dep.HeartbeatExpectBody,
 		lastCheck,
 		dep.LastLatency,
+		dep.LastStatusCode,
 		dep.ConsecutiveFailures,
 		dep.CreatedAt,
 		dep.UpdatedAt,
@@ -60,7 +71,9 @@ func (r *DependencyRepo) Create(ctx context.Context, dep *domain.Dependency) err
 func (r *DependencyRepo) GetByID(ctx context.Context, id int64) (*domain.Dependency, error) {
 	query := `
 		SELECT id, system_id, name, description, status, heartbeat_url,
-			heartbeat_interval, last_check, last_latency, consecutive_failures, created_at, updated_at
+			heartbeat_interval, heartbeat_method, heartbeat_headers, heartbeat_body,
+			heartbeat_expect_status, heartbeat_expect_body, last_check, last_latency,
+			last_status_code, consecutive_failures, created_at, updated_at
 		FROM dependencies
 		WHERE id = ?
 	`
@@ -80,7 +93,9 @@ func (r *DependencyRepo) GetByID(ctx context.Context, id int64) (*domain.Depende
 func (r *DependencyRepo) GetBySystemID(ctx context.Context, systemID int64) ([]*domain.Dependency, error) {
 	query := `
 		SELECT id, system_id, name, description, status, heartbeat_url,
-			heartbeat_interval, last_check, last_latency, consecutive_failures, created_at, updated_at
+			heartbeat_interval, heartbeat_method, heartbeat_headers, heartbeat_body,
+			heartbeat_expect_status, heartbeat_expect_body, last_check, last_latency,
+			last_status_code, consecutive_failures, created_at, updated_at
 		FROM dependencies
 		WHERE system_id = ?
 		ORDER BY name ASC
@@ -99,7 +114,9 @@ func (r *DependencyRepo) GetBySystemID(ctx context.Context, systemID int64) ([]*
 func (r *DependencyRepo) GetAllWithHeartbeat(ctx context.Context) ([]*domain.Dependency, error) {
 	query := `
 		SELECT id, system_id, name, description, status, heartbeat_url,
-			heartbeat_interval, last_check, last_latency, consecutive_failures, created_at, updated_at
+			heartbeat_interval, heartbeat_method, heartbeat_headers, heartbeat_body,
+			heartbeat_expect_status, heartbeat_expect_body, last_check, last_latency,
+			last_status_code, consecutive_failures, created_at, updated_at
 		FROM dependencies
 		WHERE heartbeat_url IS NOT NULL AND heartbeat_url != ''
 	`
@@ -118,7 +135,9 @@ func (r *DependencyRepo) Update(ctx context.Context, dep *domain.Dependency) err
 	query := `
 		UPDATE dependencies
 		SET name = ?, description = ?, status = ?, heartbeat_url = ?,
-			heartbeat_interval = ?, last_check = ?, last_latency = ?, consecutive_failures = ?, updated_at = ?
+			heartbeat_interval = ?, heartbeat_method = ?, heartbeat_headers = ?,
+			heartbeat_body = ?, heartbeat_expect_status = ?, heartbeat_expect_body = ?,
+			last_check = ?, last_latency = ?, last_status_code = ?, consecutive_failures = ?, updated_at = ?
 		WHERE id = ?
 	`
 
@@ -127,14 +146,22 @@ func (r *DependencyRepo) Update(ctx context.Context, dep *domain.Dependency) err
 		lastCheck = dep.LastCheck
 	}
 
+	headersJSON := encodeHeaders(dep.HeartbeatHeaders)
+
 	result, err := r.db.ExecContext(ctx, query,
 		dep.Name,
 		dep.Description,
 		dep.Status.String(),
 		nullString(dep.HeartbeatURL),
 		dep.HeartbeatInterval,
+		nullString(dep.HeartbeatMethod),
+		headersJSON,
+		dep.HeartbeatBody,
+		dep.HeartbeatExpectStatus,
+		dep.HeartbeatExpectBody,
 		lastCheck,
 		dep.LastLatency,
+		dep.LastStatusCode,
 		dep.ConsecutiveFailures,
 		dep.UpdatedAt,
 		dep.ID,
@@ -179,7 +206,7 @@ func (r *DependencyRepo) Delete(ctx context.Context, id int64) error {
 func (r *DependencyRepo) scanDependency(row *sql.Row) (*domain.Dependency, error) {
 	var dep domain.Dependency
 	var statusStr string
-	var heartbeatURL sql.NullString
+	var heartbeatURL, heartbeatMethod, heartbeatHeaders sql.NullString
 	var lastCheck sql.NullTime
 
 	err := row.Scan(
@@ -190,8 +217,14 @@ func (r *DependencyRepo) scanDependency(row *sql.Row) (*domain.Dependency, error
 		&statusStr,
 		&heartbeatURL,
 		&dep.HeartbeatInterval,
+		&heartbeatMethod,
+		&heartbeatHeaders,
+		&dep.HeartbeatBody,
+		&dep.HeartbeatExpectStatus,
+		&dep.HeartbeatExpectBody,
 		&lastCheck,
 		&dep.LastLatency,
+		&dep.LastStatusCode,
 		&dep.ConsecutiveFailures,
 		&dep.CreatedAt,
 		&dep.UpdatedAt,
@@ -206,6 +239,12 @@ func (r *DependencyRepo) scanDependency(row *sql.Row) (*domain.Dependency, error
 	if heartbeatURL.Valid {
 		dep.HeartbeatURL = heartbeatURL.String
 	}
+	if heartbeatMethod.Valid {
+		dep.HeartbeatMethod = heartbeatMethod.String
+	}
+	if heartbeatHeaders.Valid {
+		dep.HeartbeatHeaders = decodeHeaders(heartbeatHeaders.String)
+	}
 	if lastCheck.Valid {
 		dep.LastCheck = lastCheck.Time
 	}
@@ -219,7 +258,7 @@ func (r *DependencyRepo) scanDependencies(rows *sql.Rows) ([]*domain.Dependency,
 	for rows.Next() {
 		var dep domain.Dependency
 		var statusStr string
-		var heartbeatURL sql.NullString
+		var heartbeatURL, heartbeatMethod, heartbeatHeaders sql.NullString
 		var lastCheck sql.NullTime
 
 		if err := rows.Scan(
@@ -230,8 +269,14 @@ func (r *DependencyRepo) scanDependencies(rows *sql.Rows) ([]*domain.Dependency,
 			&statusStr,
 			&heartbeatURL,
 			&dep.HeartbeatInterval,
+			&heartbeatMethod,
+			&heartbeatHeaders,
+			&dep.HeartbeatBody,
+			&dep.HeartbeatExpectStatus,
+			&dep.HeartbeatExpectBody,
 			&lastCheck,
 			&dep.LastLatency,
+			&dep.LastStatusCode,
 			&dep.ConsecutiveFailures,
 			&dep.CreatedAt,
 			&dep.UpdatedAt,
@@ -244,6 +289,12 @@ func (r *DependencyRepo) scanDependencies(rows *sql.Rows) ([]*domain.Dependency,
 
 		if heartbeatURL.Valid {
 			dep.HeartbeatURL = heartbeatURL.String
+		}
+		if heartbeatMethod.Valid {
+			dep.HeartbeatMethod = heartbeatMethod.String
+		}
+		if heartbeatHeaders.Valid {
+			dep.HeartbeatHeaders = decodeHeaders(heartbeatHeaders.String)
 		}
 		if lastCheck.Valid {
 			dep.LastCheck = lastCheck.Time
@@ -264,4 +315,23 @@ func nullString(s string) interface{} {
 		return nil
 	}
 	return s
+}
+
+func encodeHeaders(headers map[string]string) interface{} {
+	if len(headers) == 0 {
+		return nil
+	}
+	data, _ := json.Marshal(headers)
+	return string(data)
+}
+
+func decodeHeaders(data string) map[string]string {
+	if data == "" {
+		return nil
+	}
+	var headers map[string]string
+	if err := json.Unmarshal([]byte(data), &headers); err != nil {
+		return nil
+	}
+	return headers
 }

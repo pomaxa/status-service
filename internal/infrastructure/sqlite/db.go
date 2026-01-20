@@ -235,6 +235,18 @@ CREATE INDEX IF NOT EXISTS idx_sla_breaches_detected_at ON sla_breaches(detected
 CREATE INDEX IF NOT EXISTS idx_sla_breaches_acknowledged ON sla_breaches(acknowledged);
 `,
 	},
+	{
+		Version: 8,
+		Name:    "add_advanced_healthcheck",
+		SQL: `
+ALTER TABLE dependencies ADD COLUMN heartbeat_method TEXT NOT NULL DEFAULT 'GET';
+ALTER TABLE dependencies ADD COLUMN heartbeat_headers TEXT;
+ALTER TABLE dependencies ADD COLUMN heartbeat_body TEXT NOT NULL DEFAULT '';
+ALTER TABLE dependencies ADD COLUMN heartbeat_expect_status TEXT NOT NULL DEFAULT '';
+ALTER TABLE dependencies ADD COLUMN heartbeat_expect_body TEXT NOT NULL DEFAULT '';
+ALTER TABLE dependencies ADD COLUMN last_status_code INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 // New creates a new SQLite database connection

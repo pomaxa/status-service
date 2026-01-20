@@ -59,30 +59,33 @@ func (s *HeartbeatService) CheckAllDependencies(ctx context.Context) error {
 
 // checkDependency performs health check on a single dependency
 func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Dependency) error {
-	healthy, latencyMs, err := s.checker.Check(ctx, dep.HeartbeatURL)
-	if err != nil {
-		return fmt.Errorf("check error: %w", err)
+	// Use advanced config if available
+	config := dep.GetHeartbeatConfig()
+	result := s.checker.CheckWithConfig(ctx, config)
+
+	if result.Error != nil {
+		return fmt.Errorf("check error: %w", result.Error)
 	}
 
 	oldStatus := dep.Status
 	var statusChanged bool
 
-	if healthy {
-		statusChanged = dep.RecordCheckSuccess(latencyMs)
+	// Update last status code
+	dep.LastStatusCode = result.StatusCode
+
+	if result.Healthy {
+		statusChanged = dep.RecordCheckSuccess(result.LatencyMs)
 	} else {
-		statusChanged = dep.RecordCheckFailure(latencyMs)
+		statusChanged = dep.RecordCheckFailure(result.LatencyMs)
 	}
 
 	// Record latency history
 	if s.latencyRepo != nil {
 		record := &domain.LatencyRecord{
 			DependencyID: dep.ID,
-			LatencyMs:    latencyMs,
-			Success:      healthy,
-			StatusCode:   200, // TODO: get actual status code from checker
-		}
-		if !healthy {
-			record.StatusCode = 0
+			LatencyMs:    result.LatencyMs,
+			Success:      result.Healthy,
+			StatusCode:   result.StatusCode,
 		}
 		if err := s.latencyRepo.Record(ctx, record); err != nil {
 			fmt.Printf("failed to record latency history: %v\n", err)
@@ -97,10 +100,10 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 	// Log status change if happened
 	if statusChanged {
 		var message string
-		if healthy {
-			message = fmt.Sprintf("Heartbeat check succeeded, service recovered (latency: %dms)", latencyMs)
+		if result.Healthy {
+			message = fmt.Sprintf("Heartbeat check succeeded, service recovered (latency: %dms, status: %d)", result.LatencyMs, result.StatusCode)
 		} else {
-			message = fmt.Sprintf("Heartbeat check failed (%d consecutive failures, latency: %dms)", dep.ConsecutiveFailures, latencyMs)
+			message = fmt.Sprintf("Heartbeat check failed (%d consecutive failures, latency: %dms, status: %d)", dep.ConsecutiveFailures, result.LatencyMs, result.StatusCode)
 		}
 
 		log := domain.NewStatusLog(nil, &dep.ID, oldStatus, dep.Status, message, domain.SourceHeartbeat)
