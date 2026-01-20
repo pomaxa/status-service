@@ -539,61 +539,160 @@ func formatTimeAgo() string {
 
 // handleMetrics returns Prometheus-compatible metrics
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	systems, _ := s.systemService.GetAllSystems(r.Context())
+	ctx := r.Context()
+	systems, _ := s.systemService.GetAllSystems(ctx)
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 
-	// Write metric descriptions
+	// System status metrics
 	w.Write([]byte("# HELP status_incident_system_status System status (0=green, 1=yellow, 2=red)\n"))
 	w.Write([]byte("# TYPE status_incident_system_status gauge\n"))
 
+	w.Write([]byte("# HELP status_incident_system_sla_target SLA target percentage\n"))
+	w.Write([]byte("# TYPE status_incident_system_sla_target gauge\n"))
+
+	// Dependency metrics
 	w.Write([]byte("# HELP status_incident_dependency_status Dependency status (0=green, 1=yellow, 2=red)\n"))
 	w.Write([]byte("# TYPE status_incident_dependency_status gauge\n"))
 
 	w.Write([]byte("# HELP status_incident_dependency_latency_ms Last check latency in milliseconds\n"))
 	w.Write([]byte("# TYPE status_incident_dependency_latency_ms gauge\n"))
 
+	w.Write([]byte("# HELP status_incident_dependency_consecutive_failures Number of consecutive check failures\n"))
+	w.Write([]byte("# TYPE status_incident_dependency_consecutive_failures gauge\n"))
+
+	// Counter metrics
 	w.Write([]byte("# HELP status_incident_systems_total Total number of systems\n"))
 	w.Write([]byte("# TYPE status_incident_systems_total gauge\n"))
 
 	w.Write([]byte("# HELP status_incident_dependencies_total Total number of dependencies\n"))
 	w.Write([]byte("# TYPE status_incident_dependencies_total gauge\n"))
 
+	// Incident metrics
+	w.Write([]byte("# HELP status_incident_incidents_active Number of active incidents\n"))
+	w.Write([]byte("# TYPE status_incident_incidents_active gauge\n"))
+
+	w.Write([]byte("# HELP status_incident_incidents_total Total number of incidents\n"))
+	w.Write([]byte("# TYPE status_incident_incidents_total gauge\n"))
+
+	w.Write([]byte("# HELP status_incident_incidents_by_severity Incidents by severity\n"))
+	w.Write([]byte("# TYPE status_incident_incidents_by_severity gauge\n"))
+
+	w.Write([]byte("# HELP status_incident_incidents_by_status Incidents by status\n"))
+	w.Write([]byte("# TYPE status_incident_incidents_by_status gauge\n"))
+
+	// Maintenance metrics
+	w.Write([]byte("# HELP status_incident_maintenances_active Number of active maintenance windows\n"))
+	w.Write([]byte("# TYPE status_incident_maintenances_active gauge\n"))
+
+	w.Write([]byte("# HELP status_incident_maintenances_scheduled Number of scheduled maintenance windows\n"))
+	w.Write([]byte("# TYPE status_incident_maintenances_scheduled gauge\n"))
+
+	// SLA metrics
+	w.Write([]byte("# HELP status_incident_sla_breaches_unacknowledged Number of unacknowledged SLA breaches\n"))
+	w.Write([]byte("# TYPE status_incident_sla_breaches_unacknowledged gauge\n"))
+
+	// Uptime metrics
+	w.Write([]byte("# HELP status_incident_uptime_24h System uptime percentage over last 24 hours\n"))
+	w.Write([]byte("# TYPE status_incident_uptime_24h gauge\n"))
+
 	totalDeps := 0
 
+	// System and dependency metrics
 	for _, sys := range systems {
-		statusVal := statusToInt(sys.Status)
-		line := formatMetricLine("status_incident_system_status", statusVal,
-			"system_id", intToStr(sys.ID),
-			"system_name", sys.Name)
-		w.Write([]byte(line))
+		sysIDStr := intToStr(sys.ID)
 
-		deps, _ := s.depService.GetDependenciesBySystem(r.Context(), sys.ID)
+		statusVal := statusToInt(sys.Status)
+		w.Write([]byte(formatMetricLine("status_incident_system_status", statusVal,
+			"system_id", sysIDStr,
+			"system_name", sys.Name)))
+
+		w.Write([]byte(formatMetricLine("status_incident_system_sla_target", sys.SLATarget,
+			"system_id", sysIDStr,
+			"system_name", sys.Name)))
+
+		// Get uptime for this system
+		if analytics, err := s.analyticsService.GetSystemAnalytics(ctx, sys.ID, "24h"); err == nil {
+			w.Write([]byte(formatMetricLine("status_incident_uptime_24h", analytics.UptimePercent,
+				"system_id", sysIDStr,
+				"system_name", sys.Name)))
+		}
+
+		deps, _ := s.depService.GetDependenciesBySystem(ctx, sys.ID)
 		totalDeps += len(deps)
 
 		for _, dep := range deps {
+			depIDStr := intToStr(dep.ID)
+
 			depStatusVal := statusToInt(dep.Status)
-			depLine := formatMetricLine("status_incident_dependency_status", depStatusVal,
-				"system_id", intToStr(sys.ID),
+			w.Write([]byte(formatMetricLine("status_incident_dependency_status", depStatusVal,
+				"system_id", sysIDStr,
 				"system_name", sys.Name,
-				"dependency_id", intToStr(dep.ID),
-				"dependency_name", dep.Name)
-			w.Write([]byte(depLine))
+				"dependency_id", depIDStr,
+				"dependency_name", dep.Name)))
 
 			if dep.LastLatency > 0 {
-				latencyLine := formatMetricLine("status_incident_dependency_latency_ms", dep.LastLatency,
-					"system_id", intToStr(sys.ID),
+				w.Write([]byte(formatMetricLine("status_incident_dependency_latency_ms", dep.LastLatency,
+					"system_id", sysIDStr,
 					"system_name", sys.Name,
-					"dependency_id", intToStr(dep.ID),
-					"dependency_name", dep.Name)
-				w.Write([]byte(latencyLine))
+					"dependency_id", depIDStr,
+					"dependency_name", dep.Name)))
 			}
+
+			w.Write([]byte(formatMetricLine("status_incident_dependency_consecutive_failures", dep.ConsecutiveFailures,
+				"system_id", sysIDStr,
+				"system_name", sys.Name,
+				"dependency_id", depIDStr,
+				"dependency_name", dep.Name)))
 		}
 	}
 
 	// Write totals
 	w.Write([]byte(formatMetricLine("status_incident_systems_total", len(systems))))
 	w.Write([]byte(formatMetricLine("status_incident_dependencies_total", totalDeps)))
+
+	// Incident metrics
+	if s.incidentService != nil {
+		activeIncidents, _ := s.incidentService.GetActiveIncidents(ctx)
+		w.Write([]byte(formatMetricLine("status_incident_incidents_active", len(activeIncidents))))
+
+		allIncidents, _ := s.incidentService.GetAllIncidents(ctx, 1000)
+		w.Write([]byte(formatMetricLine("status_incident_incidents_total", len(allIncidents))))
+
+		// Count by severity and status
+		severityCounts := map[string]int{"minor": 0, "major": 0, "critical": 0}
+		statusCounts := map[string]int{"investigating": 0, "identified": 0, "monitoring": 0, "resolved": 0}
+
+		for _, inc := range allIncidents {
+			severityCounts[string(inc.Severity)]++
+			statusCounts[string(inc.Status)]++
+		}
+
+		for severity, count := range severityCounts {
+			w.Write([]byte(formatMetricLine("status_incident_incidents_by_severity", count,
+				"severity", severity)))
+		}
+
+		for status, count := range statusCounts {
+			w.Write([]byte(formatMetricLine("status_incident_incidents_by_status", count,
+				"status", status)))
+		}
+	}
+
+	// Maintenance metrics
+	if s.maintenanceService != nil {
+		activeMaints, _ := s.maintenanceService.GetActiveMaintenances(ctx)
+		w.Write([]byte(formatMetricLine("status_incident_maintenances_active", len(activeMaints))))
+
+		upcomingMaints, _ := s.maintenanceService.GetUpcomingMaintenances(ctx)
+		w.Write([]byte(formatMetricLine("status_incident_maintenances_scheduled", len(upcomingMaints))))
+	}
+
+	// SLA breach metrics
+	if s.slaService != nil {
+		breaches, _ := s.slaService.GetUnacknowledgedBreaches(ctx)
+		w.Write([]byte(formatMetricLine("status_incident_sla_breaches_unacknowledged", len(breaches))))
+	}
 }
 
 func statusToInt(status domain.Status) int {
