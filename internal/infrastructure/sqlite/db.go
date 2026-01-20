@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS webhooks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     url TEXT NOT NULL,
-    type TEXT NOT NULL DEFAULT 'generic' CHECK(type IN ('generic', 'slack', 'telegram', 'discord')),
+    type TEXT NOT NULL DEFAULT 'generic' CHECK(type IN ('generic', 'slack', 'telegram', 'discord', 'teams')),
     events TEXT NOT NULL DEFAULT '["status_change"]',
     system_ids TEXT,
     enabled BOOLEAN NOT NULL DEFAULT 1,

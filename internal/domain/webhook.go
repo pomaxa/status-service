@@ -16,6 +16,7 @@ const (
 	WebhookTypeSlack    WebhookType = "slack"
 	WebhookTypeTelegram WebhookType = "telegram"
 	WebhookTypeDiscord  WebhookType = "discord"
+	WebhookTypeTeams    WebhookType = "teams"
 )
 
 // WebhookEvent represents events that trigger webhooks
@@ -77,7 +78,7 @@ func NewWebhook(name, webhookURL string, webhookType WebhookType) (*Webhook, err
 
 func isValidWebhookType(t WebhookType) bool {
 	switch t {
-	case WebhookTypeGeneric, WebhookTypeSlack, WebhookTypeTelegram, WebhookTypeDiscord:
+	case WebhookTypeGeneric, WebhookTypeSlack, WebhookTypeTelegram, WebhookTypeDiscord, WebhookTypeTeams:
 		return true
 	}
 	return false

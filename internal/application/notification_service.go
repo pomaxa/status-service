@@ -131,6 +131,8 @@ func (s *NotificationService) sendNotification(webhook *domain.Webhook, payload 
 		body, err = s.formatTelegramPayload(webhook.URL, payload)
 	case domain.WebhookTypeDiscord:
 		body, err = s.formatDiscordPayload(payload)
+	case domain.WebhookTypeTeams:
+		body, err = s.formatTeamsPayload(payload)
 	default:
 		body, err = json.Marshal(payload)
 	}
@@ -315,6 +317,62 @@ func (s *NotificationService) formatDiscordPayload(payload *domain.NotificationP
 	return json.Marshal(discordPayload)
 }
 
+func (s *NotificationService) formatTeamsPayload(payload *domain.NotificationPayload) ([]byte, error) {
+	emoji := domain.StatusEmoji(payload.NewStatus)
+	statusText := domain.StatusText(payload.NewStatus)
+
+	// Build entity name
+	entityName := ""
+	if payload.System != nil {
+		entityName = payload.System.Name
+	}
+	if payload.Dependency != nil {
+		if entityName != "" {
+			entityName += " / " + payload.Dependency.Name
+		} else {
+			entityName = payload.Dependency.Name
+		}
+	}
+
+	// Teams theme color
+	themeColor := "00FF00" // green
+	switch payload.NewStatus {
+	case domain.StatusYellow:
+		themeColor = "FFFF00" // yellow
+	case domain.StatusRed:
+		themeColor = "FF0000" // red
+	}
+
+	// Microsoft Teams Adaptive Card format
+	teamsPayload := map[string]interface{}{
+		"@type":      "MessageCard",
+		"@context":   "http://schema.org/extensions",
+		"themeColor": themeColor,
+		"summary":    fmt.Sprintf("%s is now %s", entityName, statusText),
+		"sections": []map[string]interface{}{
+			{
+				"activityTitle":    fmt.Sprintf("%s %s", emoji, entityName),
+				"activitySubtitle": fmt.Sprintf("Status changed to **%s**", statusText),
+				"facts": []map[string]interface{}{
+					{"name": "Status", "value": statusText},
+					{"name": "Source", "value": payload.Source},
+					{"name": "Time", "value": payload.Timestamp.Format("2006-01-02 15:04:05")},
+				},
+				"markdown": true,
+			},
+		},
+	}
+
+	if payload.Message != "" {
+		teamsPayload["sections"].([]map[string]interface{})[0]["facts"] = append(
+			teamsPayload["sections"].([]map[string]interface{})[0]["facts"].([]map[string]interface{}),
+			map[string]interface{}{"name": "Message", "value": payload.Message},
+		)
+	}
+
+	return json.Marshal(teamsPayload)
+}
+
 // SendTestNotification sends a test notification to a webhook
 func (s *NotificationService) SendTestNotification(ctx context.Context, webhookID int64) error {
 	webhook, err := s.webhookRepo.GetByID(ctx, webhookID)
@@ -389,6 +447,8 @@ func (s *NotificationService) sendSLABreachNotification(webhook *domain.Webhook,
 		body, err = s.formatTelegramSLABreach(webhook.URL, payload)
 	case domain.WebhookTypeDiscord:
 		body, err = s.formatDiscordSLABreach(payload)
+	case domain.WebhookTypeTeams:
+		body, err = s.formatTeamsSLABreach(payload)
 	default:
 		body, err = json.Marshal(payload)
 	}
@@ -490,6 +550,31 @@ func (s *NotificationService) formatDiscordSLABreach(payload *domain.SLABreachPa
 	}
 
 	return json.Marshal(discordPayload)
+}
+
+func (s *NotificationService) formatTeamsSLABreach(payload *domain.SLABreachPayload) ([]byte, error) {
+	teamsPayload := map[string]interface{}{
+		"@type":      "MessageCard",
+		"@context":   "http://schema.org/extensions",
+		"themeColor": "FF0000",
+		"summary":    fmt.Sprintf("SLA Breach - %s", payload.System.Name),
+		"sections": []map[string]interface{}{
+			{
+				"activityTitle":    fmt.Sprintf("⚠️ SLA Breach - %s", payload.System.Name),
+				"activitySubtitle": "SLA target not met",
+				"facts": []map[string]interface{}{
+					{"name": "System", "value": payload.System.Name},
+					{"name": "Period", "value": payload.Period},
+					{"name": "Target", "value": fmt.Sprintf("%.2f%%", payload.SLATarget)},
+					{"name": "Actual", "value": fmt.Sprintf("%.2f%%", payload.ActualValue)},
+					{"name": "Message", "value": payload.Message},
+				},
+				"markdown": true,
+			},
+		},
+	}
+
+	return json.Marshal(teamsPayload)
 }
 
 func logError(format string, args ...interface{}) {
