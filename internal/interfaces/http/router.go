@@ -61,6 +61,9 @@ func (s *Server) setupRoutes() {
 	// Public status page (no admin navigation)
 	s.router.Get("/status", s.handlePublicStatus)
 
+	// Prometheus metrics endpoint
+	s.router.Get("/metrics", s.handleMetrics)
+
 	// Web UI routes (admin)
 	s.router.Get("/", s.handleDashboard)
 	s.router.Get("/systems/{id}", s.handleSystemDetail)

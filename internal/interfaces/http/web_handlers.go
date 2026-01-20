@@ -453,3 +453,164 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 func formatTimeAgo() string {
 	return "just now"
 }
+
+// handleMetrics returns Prometheus-compatible metrics
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	systems, _ := s.systemService.GetAllSystems(r.Context())
+
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+
+	// Write metric descriptions
+	w.Write([]byte("# HELP status_incident_system_status System status (0=green, 1=yellow, 2=red)\n"))
+	w.Write([]byte("# TYPE status_incident_system_status gauge\n"))
+
+	w.Write([]byte("# HELP status_incident_dependency_status Dependency status (0=green, 1=yellow, 2=red)\n"))
+	w.Write([]byte("# TYPE status_incident_dependency_status gauge\n"))
+
+	w.Write([]byte("# HELP status_incident_dependency_latency_ms Last check latency in milliseconds\n"))
+	w.Write([]byte("# TYPE status_incident_dependency_latency_ms gauge\n"))
+
+	w.Write([]byte("# HELP status_incident_systems_total Total number of systems\n"))
+	w.Write([]byte("# TYPE status_incident_systems_total gauge\n"))
+
+	w.Write([]byte("# HELP status_incident_dependencies_total Total number of dependencies\n"))
+	w.Write([]byte("# TYPE status_incident_dependencies_total gauge\n"))
+
+	totalDeps := 0
+
+	for _, sys := range systems {
+		statusVal := statusToInt(sys.Status)
+		line := formatMetricLine("status_incident_system_status", statusVal,
+			"system_id", intToStr(sys.ID),
+			"system_name", sys.Name)
+		w.Write([]byte(line))
+
+		deps, _ := s.depService.GetDependenciesBySystem(r.Context(), sys.ID)
+		totalDeps += len(deps)
+
+		for _, dep := range deps {
+			depStatusVal := statusToInt(dep.Status)
+			depLine := formatMetricLine("status_incident_dependency_status", depStatusVal,
+				"system_id", intToStr(sys.ID),
+				"system_name", sys.Name,
+				"dependency_id", intToStr(dep.ID),
+				"dependency_name", dep.Name)
+			w.Write([]byte(depLine))
+
+			if dep.LastLatency > 0 {
+				latencyLine := formatMetricLine("status_incident_dependency_latency_ms", dep.LastLatency,
+					"system_id", intToStr(sys.ID),
+					"system_name", sys.Name,
+					"dependency_id", intToStr(dep.ID),
+					"dependency_name", dep.Name)
+				w.Write([]byte(latencyLine))
+			}
+		}
+	}
+
+	// Write totals
+	w.Write([]byte(formatMetricLine("status_incident_systems_total", len(systems))))
+	w.Write([]byte(formatMetricLine("status_incident_dependencies_total", totalDeps)))
+}
+
+func statusToInt(status domain.Status) int {
+	switch status {
+	case domain.StatusGreen:
+		return 0
+	case domain.StatusYellow:
+		return 1
+	case domain.StatusRed:
+		return 2
+	}
+	return -1
+}
+
+func intToStr(i int64) string {
+	if i == 0 {
+		return "0"
+	}
+	var digits []byte
+	for i > 0 {
+		digits = append([]byte{byte('0' + i%10)}, digits...)
+		i /= 10
+	}
+	return string(digits)
+}
+
+func formatMetricLine(name string, value interface{}, labels ...string) string {
+	result := name
+	if len(labels) > 0 {
+		result += "{"
+		for i := 0; i < len(labels); i += 2 {
+			if i > 0 {
+				result += ","
+			}
+			result += labels[i] + "=\"" + escapeLabel(labels[i+1]) + "\""
+		}
+		result += "}"
+	}
+	switch v := value.(type) {
+	case int:
+		result += " " + intToStrPlain(v)
+	case int64:
+		result += " " + intToStr(v)
+	case float64:
+		result += " " + formatFloat(v)
+	}
+	result += "\n"
+	return result
+}
+
+func intToStrPlain(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	negative := i < 0
+	if negative {
+		i = -i
+	}
+	var digits []byte
+	for i > 0 {
+		digits = append([]byte{byte('0' + i%10)}, digits...)
+		i /= 10
+	}
+	if negative {
+		digits = append([]byte{'-'}, digits...)
+	}
+	return string(digits)
+}
+
+func formatFloat(f float64) string {
+	// Simple float formatting
+	intPart := int64(f)
+	fracPart := int64((f - float64(intPart)) * 100)
+	if fracPart < 0 {
+		fracPart = -fracPart
+	}
+	return intToStr(intPart) + "." + padLeft(intToStrPlain(int(fracPart)), 2, '0')
+}
+
+func padLeft(s string, length int, pad byte) string {
+	for len(s) < length {
+		s = string(pad) + s
+	}
+	return s
+}
+
+func escapeLabel(s string) string {
+	var result []byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '\\':
+			result = append(result, '\\', '\\')
+		case '"':
+			result = append(result, '\\', '"')
+		case '\n':
+			result = append(result, '\\', 'n')
+		default:
+			result = append(result, c)
+		}
+	}
+	return string(result)
+}
