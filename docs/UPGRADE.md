@@ -6,6 +6,7 @@ This guide describes how to safely upgrade Status Incident Service without losin
 
 | Version | Schema | Changes |
 |---------|--------|---------|
+| v1.0.2  | 1      | Documentation updates, refreshed screenshots |
 | v1.0.1  | 1      | Fix auto-refresh interrupting form editing |
 | v1.0.0  | 1      | Initial stable release |
 
