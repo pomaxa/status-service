@@ -10,6 +10,7 @@ import (
 type HeartbeatService struct {
 	depRepo             domain.DependencyRepository
 	logRepo             domain.StatusLogRepository
+	latencyRepo         domain.LatencyRepository
 	checker             domain.HealthChecker
 	notificationService *NotificationService
 }
@@ -25,6 +26,11 @@ func NewHeartbeatService(
 		logRepo: logRepo,
 		checker: checker,
 	}
+}
+
+// SetLatencyRepo sets the latency repository for recording history
+func (s *HeartbeatService) SetLatencyRepo(repo domain.LatencyRepository) {
+	s.latencyRepo = repo
 }
 
 // SetNotificationService sets the notification service for sending webhooks
@@ -65,6 +71,22 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 		statusChanged = dep.RecordCheckSuccess(latencyMs)
 	} else {
 		statusChanged = dep.RecordCheckFailure(latencyMs)
+	}
+
+	// Record latency history
+	if s.latencyRepo != nil {
+		record := &domain.LatencyRecord{
+			DependencyID: dep.ID,
+			LatencyMs:    latencyMs,
+			Success:      healthy,
+			StatusCode:   200, // TODO: get actual status code from checker
+		}
+		if !healthy {
+			record.StatusCode = 0
+		}
+		if err := s.latencyRepo.Record(ctx, record); err != nil {
+			fmt.Printf("failed to record latency history: %v\n", err)
+		}
 	}
 
 	// Always update to save LastCheck and LastLatency

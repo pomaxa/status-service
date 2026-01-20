@@ -109,9 +109,24 @@
                     <button class="btn btn-small" onclick="openHeartbeatModal(this.closest('.dep-row'))">Heartbeat</button>
                     {{if .HeartbeatURL}}
                     <button class="btn btn-small" onclick="forceCheck({{.ID}})">Check Now</button>
+                    <button class="btn btn-small" onclick="toggleCharts({{.ID}})">Charts</button>
                     {{end}}
                 </td>
             </tr>
+            {{if .HeartbeatURL}}
+            <tr class="charts-row" id="charts-{{.ID}}" style="display:none">
+                <td colspan="6">
+                    <div class="chart-container">
+                        <h3>Latency (24h)</h3>
+                        <div id="dep-{{.ID}}-latency" class="latency-chart-container"></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Uptime Heatmap (90 days)</h3>
+                        <div id="dep-{{.ID}}-uptime" class="uptime-heatmap-container"></div>
+                    </div>
+                </td>
+            </tr>
+            {{end}}
             {{end}}
         </tbody>
     </table>
@@ -203,8 +218,23 @@
 {{end}}
 
 {{define "scripts"}}
+<script src="/static/charts.js"></script>
 <script>
 const systemId = {{.System.ID}};
+const chartsLoaded = {};
+
+function toggleCharts(depId) {
+    const row = document.getElementById('charts-' + depId);
+    if (row.style.display === 'none') {
+        row.style.display = 'table-row';
+        if (!chartsLoaded[depId]) {
+            Charts.loadDependencyCharts(depId, 'dep-' + depId);
+            chartsLoaded[depId] = true;
+        }
+    } else {
+        row.style.display = 'none';
+    }
+}
 let selectedStatus = '{{.System.Status.String}}';
 
 document.querySelectorAll('.status-btn').forEach(btn => {

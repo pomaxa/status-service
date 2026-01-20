@@ -18,6 +18,7 @@ type Server struct {
 	analyticsService   *application.AnalyticsService
 	maintenanceService *application.MaintenanceService
 	incidentService    *application.IncidentService
+	latencyService     *application.LatencyService
 	webhookHandlers    *WebhookHandlers
 	apiKeyHandlers     *APIKeyHandlers
 	authMiddleware     *AuthMiddleware
@@ -32,6 +33,7 @@ func NewServer(
 	analyticsService *application.AnalyticsService,
 	maintenanceService *application.MaintenanceService,
 	incidentService *application.IncidentService,
+	latencyService *application.LatencyService,
 	webhookHandlers *WebhookHandlers,
 	apiKeyHandlers *APIKeyHandlers,
 	authMiddleware *AuthMiddleware,
@@ -45,6 +47,7 @@ func NewServer(
 		analyticsService:   analyticsService,
 		maintenanceService: maintenanceService,
 		incidentService:    incidentService,
+		latencyService:     latencyService,
 		webhookHandlers:    webhookHandlers,
 		apiKeyHandlers:     apiKeyHandlers,
 		authMiddleware:     authMiddleware,
@@ -122,6 +125,8 @@ func (s *Server) setupRoutes() {
 		r.Post("/dependencies/{id}/check", s.apiForceCheck)
 		r.Get("/dependencies/{id}/logs", s.apiGetDependencyLogs)
 		r.Get("/dependencies/{id}/analytics", s.apiGetDependencyAnalytics)
+		r.Get("/dependencies/{id}/latency", s.apiGetDependencyLatency)
+		r.Get("/dependencies/{id}/uptime", s.apiGetDependencyUptime)
 
 		// Logs
 		r.Get("/logs", s.apiGetAllLogs)

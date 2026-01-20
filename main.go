@@ -80,6 +80,7 @@ func main() {
 	maintenanceRepo := sqlite.NewMaintenanceRepo(db)
 	incidentRepo := sqlite.NewIncidentRepo(db)
 	apiKeyRepo := sqlite.NewAPIKeyRepo(db)
+	latencyRepo := sqlite.NewLatencyRepo(db)
 
 	// Initialize health checker
 	checker := http_checker.New(10 * time.Second)
@@ -91,12 +92,14 @@ func main() {
 	analyticsService := application.NewAnalyticsService(analyticsRepo, logRepo)
 	maintenanceService := application.NewMaintenanceService(maintenanceRepo)
 	incidentService := application.NewIncidentService(incidentRepo)
+	latencyService := application.NewLatencyService(latencyRepo, depRepo)
 	notificationService := application.NewNotificationService(webhookRepo, systemRepo, depRepo)
 
 	// Set notification service on other services
 	systemService.SetNotificationService(notificationService)
 	depService.SetNotificationService(notificationService)
 	heartbeatService.SetNotificationService(notificationService)
+	heartbeatService.SetLatencyRepo(latencyRepo)
 
 	// Initialize webhook handlers
 	webhookHandlers := httpserver.NewWebhookHandlers(webhookRepo, notificationService)
@@ -122,6 +125,7 @@ func main() {
 		analyticsService,
 		maintenanceService,
 		incidentService,
+		latencyService,
 		webhookHandlers,
 		apiKeyHandlers,
 		authMiddleware,

@@ -172,6 +172,25 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_key_value ON api_keys(key_value);
 CREATE INDEX IF NOT EXISTS idx_api_keys_enabled ON api_keys(enabled);
 `,
 	},
+	{
+		Version: 6,
+		Name:    "add_latency_history",
+		SQL: `
+CREATE TABLE IF NOT EXISTS latency_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dependency_id INTEGER NOT NULL,
+    latency_ms INTEGER NOT NULL,
+    success BOOLEAN NOT NULL DEFAULT 1,
+    status_code INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dependency_id) REFERENCES dependencies(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_latency_history_dependency_id ON latency_history(dependency_id);
+CREATE INDEX IF NOT EXISTS idx_latency_history_created_at ON latency_history(created_at);
+CREATE INDEX IF NOT EXISTS idx_latency_history_dep_time ON latency_history(dependency_id, created_at);
+`,
+	},
 }
 
 // New creates a new SQLite database connection

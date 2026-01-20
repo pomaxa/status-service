@@ -1044,3 +1044,75 @@ func formatDuration(d time.Duration) string {
 	}
 	return strconv.Itoa(days) + "d"
 }
+
+// Latency handlers
+
+// @Summary Get dependency latency stats
+// @Description Get latency statistics and chart data for a dependency
+// @Tags latency
+// @Produce json
+// @Param id path int true "Dependency ID"
+// @Param period query string false "Time period (1h, 6h, 24h, 7d, 30d, 90d)"
+// @Success 200 {object} domain.LatencyStats
+// @Router /dependencies/{id}/latency [get]
+func (s *Server) apiGetDependencyLatency(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid dependency ID")
+		return
+	}
+
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "24h"
+	}
+
+	if s.latencyService == nil {
+		s.respondError(w, http.StatusServiceUnavailable, "latency service not available")
+		return
+	}
+
+	stats, err := s.latencyService.GetDependencyLatencyStats(r.Context(), id, period)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, stats)
+}
+
+// @Summary Get dependency uptime heatmap
+// @Description Get daily uptime data for heatmap visualization
+// @Tags latency
+// @Produce json
+// @Param id path int true "Dependency ID"
+// @Param days query int false "Number of days (default 90)"
+// @Success 200 {array} domain.UptimePoint
+// @Router /dependencies/{id}/uptime [get]
+func (s *Server) apiGetDependencyUptime(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid dependency ID")
+		return
+	}
+
+	days := 90
+	if d := r.URL.Query().Get("days"); d != "" {
+		if parsed, _ := strconv.Atoi(d); parsed > 0 {
+			days = parsed
+		}
+	}
+
+	if s.latencyService == nil {
+		s.respondError(w, http.StatusServiceUnavailable, "latency service not available")
+		return
+	}
+
+	heatmap, err := s.latencyService.GetDependencyUptimeHeatmap(r.Context(), id, days)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, heatmap)
+}
