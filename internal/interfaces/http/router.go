@@ -19,6 +19,8 @@ type Server struct {
 	maintenanceService *application.MaintenanceService
 	incidentService    *application.IncidentService
 	webhookHandlers    *WebhookHandlers
+	apiKeyHandlers     *APIKeyHandlers
+	authMiddleware     *AuthMiddleware
 	templateDir        string
 }
 
@@ -31,6 +33,8 @@ func NewServer(
 	maintenanceService *application.MaintenanceService,
 	incidentService *application.IncidentService,
 	webhookHandlers *WebhookHandlers,
+	apiKeyHandlers *APIKeyHandlers,
+	authMiddleware *AuthMiddleware,
 	templateDir string,
 ) *Server {
 	s := &Server{
@@ -42,6 +46,8 @@ func NewServer(
 		maintenanceService: maintenanceService,
 		incidentService:    incidentService,
 		webhookHandlers:    webhookHandlers,
+		apiKeyHandlers:     apiKeyHandlers,
+		authMiddleware:     authMiddleware,
 		templateDir:        templateDir,
 	}
 
@@ -64,22 +70,35 @@ func (s *Server) setupRoutes() {
 		httpSwagger.URL("/swagger/doc.json"),
 	))
 
-	// Public status page (no admin navigation)
+	// Public routes (no auth required)
 	s.router.Get("/status", s.handlePublicStatus)
-
-	// Prometheus metrics endpoint
 	s.router.Get("/metrics", s.handleMetrics)
 
-	// Web UI routes (admin)
-	s.router.Get("/", s.handleDashboard)
-	s.router.Get("/systems/{id}", s.handleSystemDetail)
-	s.router.Get("/admin", s.handleAdmin)
-	s.router.Get("/logs", s.handleLogs)
-	s.router.Get("/analytics", s.handleAnalyticsPage)
+	// Auth routes
+	if s.authMiddleware != nil && s.authMiddleware.IsEnabled() {
+		s.router.Get("/login", s.authMiddleware.LoginHandler)
+		s.router.Post("/login", s.authMiddleware.LoginHandler)
+		s.router.Get("/logout", s.authMiddleware.LogoutHandler)
+	}
+
+	// Protected Web UI routes (admin)
+	s.router.Group(func(r chi.Router) {
+		if s.authMiddleware != nil && s.authMiddleware.IsEnabled() {
+			r.Use(s.authMiddleware.RequireAuth)
+		}
+		r.Get("/", s.handleDashboard)
+		r.Get("/systems/{id}", s.handleSystemDetail)
+		r.Get("/admin", s.handleAdmin)
+		r.Get("/logs", s.handleLogs)
+		r.Get("/analytics", s.handleAnalyticsPage)
+	})
 
 	// REST API routes
 	s.router.Route("/api", func(r chi.Router) {
 		r.Use(jsonContentType)
+		if s.authMiddleware != nil && s.authMiddleware.IsEnabled() {
+			r.Use(s.authMiddleware.RequireAPIAuth)
+		}
 
 		// Systems
 		r.Get("/systems", s.apiGetSystems)
@@ -145,6 +164,14 @@ func (s *Server) setupRoutes() {
 		r.Post("/incidents/{id}/resolve", s.apiResolveIncident)
 		r.Get("/incidents/{id}/updates", s.apiGetIncidentUpdates)
 		r.Post("/incidents/{id}/updates", s.apiAddIncidentUpdate)
+
+		// API Keys (only if auth is enabled)
+		if s.apiKeyHandlers != nil {
+			r.Get("/apikeys", s.apiKeyHandlers.ListAPIKeys)
+			r.Post("/apikeys", s.apiKeyHandlers.CreateAPIKey)
+			r.Delete("/apikeys/{id}", s.apiKeyHandlers.DeleteAPIKey)
+			r.Put("/apikeys/{id}/toggle", s.apiKeyHandlers.ToggleAPIKey)
+		}
 	})
 }
 

@@ -50,6 +50,18 @@ func (s *Server) respondError(w http.ResponseWriter, status int, message string)
 	s.respondJSON(w, status, errorResponse{Error: message})
 }
 
+// Standalone helper functions for non-Server handlers
+func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.WriteHeader(status)
+	if data != nil {
+		json.NewEncoder(w).Encode(data)
+	}
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, errorResponse{Error: message})
+}
+
 func parseID(r *http.Request, param string) (int64, error) {
 	idStr := chi.URLParam(r, param)
 	return strconv.ParseInt(idStr, 10, 64)

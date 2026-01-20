@@ -40,6 +40,12 @@ func main() {
 	templateDir := flag.String("templates", "templates", "Templates directory")
 	heartbeatInterval := flag.Duration("heartbeat", 60*time.Second, "Heartbeat check interval")
 	showVersion := flag.Bool("version", false, "Show version and exit")
+
+	// Auth flags
+	authEnabled := flag.Bool("auth", false, "Enable authentication")
+	authUser := flag.String("auth-user", "admin", "Admin username")
+	authPass := flag.String("auth-pass", "", "Admin password (required if auth enabled)")
+
 	flag.Parse()
 
 	// Show version and exit
@@ -73,6 +79,7 @@ func main() {
 	webhookRepo := sqlite.NewWebhookRepo(db)
 	maintenanceRepo := sqlite.NewMaintenanceRepo(db)
 	incidentRepo := sqlite.NewIncidentRepo(db)
+	apiKeyRepo := sqlite.NewAPIKeyRepo(db)
 
 	// Initialize health checker
 	checker := http_checker.New(10 * time.Second)
@@ -94,6 +101,19 @@ func main() {
 	// Initialize webhook handlers
 	webhookHandlers := httpserver.NewWebhookHandlers(webhookRepo, notificationService)
 
+	// Initialize auth middleware
+	var authMiddleware *httpserver.AuthMiddleware
+	var apiKeyHandlers *httpserver.APIKeyHandlers
+
+	if *authEnabled {
+		if *authPass == "" {
+			log.Fatal("Auth password is required when auth is enabled (use -auth-pass)")
+		}
+		authMiddleware = httpserver.NewAuthMiddleware(true, *authUser, *authPass, apiKeyRepo)
+		apiKeyHandlers = httpserver.NewAPIKeyHandlers(apiKeyRepo)
+		log.Printf("Authentication enabled (user: %s)", *authUser)
+	}
+
 	// Initialize HTTP server
 	server := httpserver.NewServer(
 		systemService,
@@ -103,6 +123,8 @@ func main() {
 		maintenanceService,
 		incidentService,
 		webhookHandlers,
+		apiKeyHandlers,
+		authMiddleware,
 		*templateDir,
 	)
 

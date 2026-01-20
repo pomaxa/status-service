@@ -47,6 +47,20 @@ a:hover {
     text-decoration: none;
 }
 
+.nav-link-muted {
+    opacity: 0.6;
+}
+
+.nav-link-logout {
+    color: #ff8080 !important;
+    border-left: 1px solid #333;
+    padding-left: 2rem !important;
+}
+
+.nav-link-logout:hover {
+    color: #ff6060 !important;
+}
+
 /* Container */
 .container {
     max-width: 1200px;

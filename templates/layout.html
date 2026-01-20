@@ -14,8 +14,17 @@
             <a href="/analytics">Analytics</a>
             <a href="/logs">Logs</a>
             <a href="/admin">Admin</a>
+            <a href="/status" class="nav-link-muted">Public</a>
+            <a href="/logout" class="nav-link-logout" id="logoutLink">Logout</a>
         </div>
     </nav>
+    <script>
+        // Hide logout link if no session cookie (auth not enabled)
+        if (!document.cookie.includes('session=')) {
+            var logoutLink = document.getElementById('logoutLink');
+            if (logoutLink) logoutLink.style.display = 'none';
+        }
+    </script>
     <main class="container">
         {{block "content" .}}{{end}}
     </main>

@@ -152,6 +152,26 @@ CREATE INDEX IF NOT EXISTS idx_incidents_created_at ON incidents(created_at);
 CREATE INDEX IF NOT EXISTS idx_incident_updates_incident_id ON incident_updates(incident_id);
 `,
 	},
+	{
+		Version: 5,
+		Name:    "add_api_keys",
+		SQL: `
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    key_value TEXT NOT NULL UNIQUE,
+    key_hash TEXT NOT NULL,
+    scopes TEXT NOT NULL DEFAULT '["read"]',
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    expires_at DATETIME,
+    last_used DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_value ON api_keys(key_value);
+CREATE INDEX IF NOT EXISTS idx_api_keys_enabled ON api_keys(enabled);
+`,
+	},
 }
 
 // New creates a new SQLite database connection
