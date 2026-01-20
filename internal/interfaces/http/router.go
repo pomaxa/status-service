@@ -16,6 +16,7 @@ type Server struct {
 	depService       *application.DependencyService
 	heartbeatService *application.HeartbeatService
 	analyticsService *application.AnalyticsService
+	webhookHandlers  *WebhookHandlers
 	templateDir      string
 }
 
@@ -25,6 +26,7 @@ func NewServer(
 	depService *application.DependencyService,
 	heartbeatService *application.HeartbeatService,
 	analyticsService *application.AnalyticsService,
+	webhookHandlers *WebhookHandlers,
 	templateDir string,
 ) *Server {
 	s := &Server{
@@ -33,6 +35,7 @@ func NewServer(
 		depService:       depService,
 		heartbeatService: heartbeatService,
 		analyticsService: analyticsService,
+		webhookHandlers:  webhookHandlers,
 		templateDir:      templateDir,
 	}
 
@@ -99,6 +102,14 @@ func (s *Server) setupRoutes() {
 		r.Get("/export", s.apiExportAll)
 		r.Get("/export/logs", s.apiExportLogs)
 		r.Post("/import", s.apiImportAll)
+
+		// Webhooks
+		r.Get("/webhooks", s.webhookHandlers.ListWebhooks)
+		r.Post("/webhooks", s.webhookHandlers.CreateWebhook)
+		r.Get("/webhooks/{id}", s.webhookHandlers.GetWebhook)
+		r.Put("/webhooks/{id}", s.webhookHandlers.UpdateWebhook)
+		r.Delete("/webhooks/{id}", s.webhookHandlers.DeleteWebhook)
+		r.Post("/webhooks/{id}/test", s.webhookHandlers.TestWebhook)
 	})
 }
 

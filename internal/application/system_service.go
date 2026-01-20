@@ -8,8 +8,9 @@ import (
 
 // SystemService handles system-related use cases
 type SystemService struct {
-	systemRepo domain.SystemRepository
-	logRepo    domain.StatusLogRepository
+	systemRepo          domain.SystemRepository
+	logRepo             domain.StatusLogRepository
+	notificationService *NotificationService
 }
 
 // NewSystemService creates a new SystemService
@@ -18,6 +19,11 @@ func NewSystemService(systemRepo domain.SystemRepository, logRepo domain.StatusL
 		systemRepo: systemRepo,
 		logRepo:    logRepo,
 	}
+}
+
+// SetNotificationService sets the notification service for sending webhooks
+func (s *SystemService) SetNotificationService(ns *NotificationService) {
+	s.notificationService = ns
 }
 
 // CreateSystem creates a new system
@@ -99,10 +105,15 @@ func (s *SystemService) UpdateSystemStatus(ctx context.Context, id int64, status
 	}
 
 	// Log the status change
-	log := domain.NewStatusLog(&id, nil, oldStatus, newStatus, message, domain.SourceManual)
-	if err := s.logRepo.Create(ctx, log); err != nil {
+	statusLog := domain.NewStatusLog(&id, nil, oldStatus, newStatus, message, domain.SourceManual)
+	if err := s.logRepo.Create(ctx, statusLog); err != nil {
 		// Log error but don't fail the operation
 		fmt.Printf("failed to log status change: %v\n", err)
+	}
+
+	// Send notifications
+	if s.notificationService != nil && oldStatus != newStatus {
+		go s.notificationService.NotifyStatusChange(ctx, statusLog)
 	}
 
 	return system, nil

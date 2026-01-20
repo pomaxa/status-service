@@ -78,12 +78,25 @@ CREATE INDEX IF NOT EXISTS idx_status_log_created_at ON status_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_dependencies_heartbeat ON dependencies(heartbeat_url) WHERE heartbeat_url IS NOT NULL AND heartbeat_url != '';
 `,
 	},
-	// Future migrations go here:
-	// {
-	// 	Version: 2,
-	// 	Name:    "add_some_feature",
-	// 	SQL:     "ALTER TABLE ...",
-	// },
+	{
+		Version: 2,
+		Name:    "add_webhooks",
+		SQL: `
+CREATE TABLE IF NOT EXISTS webhooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'generic' CHECK(type IN ('generic', 'slack', 'telegram', 'discord')),
+    events TEXT NOT NULL DEFAULT '["status_change"]',
+    system_ids TEXT,
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled);
+`,
+	},
 }
 
 // New creates a new SQLite database connection

@@ -8,9 +8,10 @@ import (
 
 // HeartbeatService handles heartbeat checking
 type HeartbeatService struct {
-	depRepo domain.DependencyRepository
-	logRepo domain.StatusLogRepository
-	checker domain.HealthChecker
+	depRepo             domain.DependencyRepository
+	logRepo             domain.StatusLogRepository
+	checker             domain.HealthChecker
+	notificationService *NotificationService
 }
 
 // NewHeartbeatService creates a new HeartbeatService
@@ -24,6 +25,11 @@ func NewHeartbeatService(
 		logRepo: logRepo,
 		checker: checker,
 	}
+}
+
+// SetNotificationService sets the notification service for sending webhooks
+func (s *HeartbeatService) SetNotificationService(ns *NotificationService) {
+	s.notificationService = ns
 }
 
 // CheckAllDependencies checks all dependencies with heartbeat configured
@@ -78,6 +84,11 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 		log := domain.NewStatusLog(nil, &dep.ID, oldStatus, dep.Status, message, domain.SourceHeartbeat)
 		if err := s.logRepo.Create(ctx, log); err != nil {
 			fmt.Printf("failed to log heartbeat status change: %v\n", err)
+		}
+
+		// Send notifications
+		if s.notificationService != nil {
+			go s.notificationService.NotifyStatusChange(ctx, log)
 		}
 	}
 

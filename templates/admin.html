@@ -29,6 +29,86 @@
 </section>
 
 <section class="card">
+    <h2>Webhooks</h2>
+    <p class="section-desc">Configure webhooks to receive notifications when system status changes.</p>
+
+    <div id="webhooksList" class="webhooks-list">
+        <div class="loading">Loading webhooks...</div>
+    </div>
+
+    <button class="btn btn-primary" onclick="openAddWebhookModal()">Add Webhook</button>
+</section>
+
+<!-- Add Webhook Modal -->
+<div id="addWebhookModal" class="modal" style="display:none">
+    <div class="modal-content modal-wide">
+        <h3>Add Webhook</h3>
+        <form id="addWebhookForm" class="admin-form">
+            <div class="form-row">
+                <input type="text" id="addWebhookName" placeholder="Webhook name" required>
+                <select id="addWebhookType">
+                    <option value="generic">Generic HTTP</option>
+                    <option value="slack">Slack</option>
+                    <option value="telegram">Telegram</option>
+                    <option value="discord">Discord</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <input type="url" id="addWebhookUrl" placeholder="Webhook URL" required style="flex:2">
+            </div>
+            <div class="form-row">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="addWebhookEnabled" checked>
+                    Enabled
+                </label>
+            </div>
+            <div class="form-hint">
+                <strong>URL examples:</strong><br>
+                Slack: https://hooks.slack.com/services/XXX/YYY/ZZZ<br>
+                Telegram: https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage?chat_id=&lt;CHAT_ID&gt;<br>
+                Discord: https://discord.com/api/webhooks/XXX/YYY
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn" onclick="closeModal('addWebhookModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Add</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Webhook Modal -->
+<div id="editWebhookModal" class="modal" style="display:none">
+    <div class="modal-content modal-wide">
+        <h3>Edit Webhook</h3>
+        <form id="editWebhookForm" class="admin-form">
+            <input type="hidden" id="editWebhookId">
+            <div class="form-row">
+                <input type="text" id="editWebhookName" placeholder="Webhook name" required>
+                <select id="editWebhookType">
+                    <option value="generic">Generic HTTP</option>
+                    <option value="slack">Slack</option>
+                    <option value="telegram">Telegram</option>
+                    <option value="discord">Discord</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <input type="url" id="editWebhookUrl" placeholder="Webhook URL" required style="flex:2">
+            </div>
+            <div class="form-row">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="editWebhookEnabled">
+                    Enabled
+                </label>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn" onclick="closeModal('editWebhookModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<section class="card">
     <h2>Add New System</h2>
     <form id="addSystemForm" class="admin-form">
         <div class="form-row">
@@ -464,5 +544,176 @@ document.getElementById('importFile').addEventListener('change', async (e) => {
 
     e.target.value = '';
 });
+
+// ========== Webhooks ==========
+
+let webhooksData = [];
+
+async function loadWebhooks() {
+    const container = document.getElementById('webhooksList');
+    try {
+        const res = await fetch('/api/webhooks');
+        if (!res.ok) throw new Error('Failed to load webhooks');
+        webhooksData = await res.json();
+        renderWebhooks();
+    } catch (err) {
+        container.innerHTML = '<div class="error">Failed to load webhooks</div>';
+    }
+}
+
+function renderWebhooks() {
+    const container = document.getElementById('webhooksList');
+    if (!webhooksData || webhooksData.length === 0) {
+        container.innerHTML = '<p class="no-items">No webhooks configured</p>';
+        return;
+    }
+
+    container.innerHTML = webhooksData.map(w => `
+        <div class="webhook-item ${w.enabled ? '' : 'disabled'}">
+            <div class="webhook-info">
+                <span class="webhook-name">${escapeHtml(w.name)}</span>
+                <span class="webhook-type">${w.type}</span>
+                <span class="webhook-url" title="${escapeHtml(w.url)}">${truncateUrl(w.url)}</span>
+                ${w.enabled ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-gray">Disabled</span>'}
+            </div>
+            <div class="webhook-actions">
+                <button class="btn btn-tiny" onclick="testWebhook(${w.id})">Test</button>
+                <button class="btn btn-tiny" onclick="openEditWebhookModal(${w.id})">Edit</button>
+                <button class="btn btn-tiny btn-danger" onclick="deleteWebhook(${w.id}, '${escapeHtml(w.name)}')">Delete</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function truncateUrl(url) {
+    if (!url) return '';
+    if (url.length <= 50) return url;
+    return url.substring(0, 47) + '...';
+}
+
+function openAddWebhookModal() {
+    document.getElementById('addWebhookName').value = '';
+    document.getElementById('addWebhookType').value = 'generic';
+    document.getElementById('addWebhookUrl').value = '';
+    document.getElementById('addWebhookEnabled').checked = true;
+    document.getElementById('addWebhookModal').style.display = 'flex';
+}
+
+document.getElementById('addWebhookForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = {
+        name: document.getElementById('addWebhookName').value,
+        type: document.getElementById('addWebhookType').value,
+        url: document.getElementById('addWebhookUrl').value,
+        enabled: document.getElementById('addWebhookEnabled').checked,
+        events: ['status_change']
+    };
+
+    try {
+        const res = await fetch('/api/webhooks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+            closeModal('addWebhookModal');
+            loadWebhooks();
+        } else {
+            const err = await res.json();
+            alert(err.error || 'Failed to create webhook');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+});
+
+document.getElementById('addWebhookModal').addEventListener('click', (e) => {
+    if (e.target.id === 'addWebhookModal') closeModal('addWebhookModal');
+});
+
+function openEditWebhookModal(id) {
+    const webhook = webhooksData.find(w => w.id === id);
+    if (!webhook) return;
+
+    document.getElementById('editWebhookId').value = webhook.id;
+    document.getElementById('editWebhookName').value = webhook.name;
+    document.getElementById('editWebhookType').value = webhook.type;
+    document.getElementById('editWebhookUrl').value = webhook.url;
+    document.getElementById('editWebhookEnabled').checked = webhook.enabled;
+    document.getElementById('editWebhookModal').style.display = 'flex';
+}
+
+document.getElementById('editWebhookForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('editWebhookId').value;
+    const data = {
+        name: document.getElementById('editWebhookName').value,
+        type: document.getElementById('editWebhookType').value,
+        url: document.getElementById('editWebhookUrl').value,
+        enabled: document.getElementById('editWebhookEnabled').checked,
+        events: ['status_change']
+    };
+
+    try {
+        const res = await fetch(`/api/webhooks/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+            closeModal('editWebhookModal');
+            loadWebhooks();
+        } else {
+            const err = await res.json();
+            alert(err.error || 'Failed to update webhook');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+});
+
+document.getElementById('editWebhookModal').addEventListener('click', (e) => {
+    if (e.target.id === 'editWebhookModal') closeModal('editWebhookModal');
+});
+
+async function deleteWebhook(id, name) {
+    if (!confirm(`Are you sure you want to delete webhook "${name}"?`)) return;
+
+    try {
+        const res = await fetch(`/api/webhooks/${id}`, {method: 'DELETE'});
+        if (res.ok) {
+            loadWebhooks();
+        } else {
+            const err = await res.json();
+            alert(err.error || 'Failed to delete webhook');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+
+async function testWebhook(id) {
+    try {
+        const res = await fetch(`/api/webhooks/${id}/test`, {method: 'POST'});
+        if (res.ok) {
+            alert('Test notification sent!');
+        } else {
+            const err = await res.json();
+            alert(err.error || 'Failed to send test notification');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+
+// Load webhooks on page load
+loadWebhooks();
 </script>
 {{end}}

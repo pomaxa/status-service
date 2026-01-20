@@ -91,3 +91,24 @@ type HealthChecker interface {
 	// Check performs HTTP health check and returns healthy status and response time
 	Check(ctx context.Context, url string) (healthy bool, latencyMs int64, err error)
 }
+
+// WebhookRepository defines operations for Webhook persistence
+type WebhookRepository interface {
+	// Create persists a new webhook and sets its ID
+	Create(ctx context.Context, webhook *Webhook) error
+
+	// GetByID retrieves a webhook by ID
+	GetByID(ctx context.Context, id int64) (*Webhook, error)
+
+	// GetAll retrieves all webhooks
+	GetAll(ctx context.Context) ([]*Webhook, error)
+
+	// GetEnabled retrieves all enabled webhooks
+	GetEnabled(ctx context.Context) ([]*Webhook, error)
+
+	// Update saves changes to an existing webhook
+	Update(ctx context.Context, webhook *Webhook) error
+
+	// Delete removes a webhook by ID
+	Delete(ctx context.Context, id int64) error
+}

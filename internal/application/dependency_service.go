@@ -8,8 +8,9 @@ import (
 
 // DependencyService handles dependency-related use cases
 type DependencyService struct {
-	depRepo domain.DependencyRepository
-	logRepo domain.StatusLogRepository
+	depRepo             domain.DependencyRepository
+	logRepo             domain.StatusLogRepository
+	notificationService *NotificationService
 }
 
 // NewDependencyService creates a new DependencyService
@@ -18,6 +19,11 @@ func NewDependencyService(depRepo domain.DependencyRepository, logRepo domain.St
 		depRepo: depRepo,
 		logRepo: logRepo,
 	}
+}
+
+// SetNotificationService sets the notification service for sending webhooks
+func (s *DependencyService) SetNotificationService(ns *NotificationService) {
+	s.notificationService = ns
 }
 
 // CreateDependency creates a new dependency for a system
@@ -142,6 +148,11 @@ func (s *DependencyService) UpdateDependencyStatus(ctx context.Context, id int64
 	log := domain.NewStatusLog(nil, &id, oldStatus, newStatus, message, domain.SourceManual)
 	if err := s.logRepo.Create(ctx, log); err != nil {
 		fmt.Printf("failed to log status change: %v\n", err)
+	}
+
+	// Send notifications
+	if s.notificationService != nil && oldStatus != newStatus {
+		go s.notificationService.NotifyStatusChange(ctx, log)
 	}
 
 	return dep, nil
