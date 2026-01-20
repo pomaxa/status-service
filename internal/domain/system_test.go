@@ -140,3 +140,77 @@ func TestSystem_IsHealthy(t *testing.T) {
 		t.Error("System with red status should not be healthy")
 	}
 }
+
+func TestSystem_GetSLATarget(t *testing.T) {
+	tests := []struct {
+		name     string
+		target   float64
+		expected float64
+	}{
+		{"default when zero", 0, DefaultSLATarget},
+		{"default when negative", -1, DefaultSLATarget},
+		{"custom target", 99.5, 99.5},
+		{"high target", 99.99, 99.99},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			system := &System{SLATarget: tt.target}
+			result := system.GetSLATarget()
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestSystem_SetSLATarget(t *testing.T) {
+	tests := []struct {
+		name     string
+		target   float64
+		expected float64
+	}{
+		{"valid target", 99.5, 99.5},
+		{"zero defaults", 0, DefaultSLATarget},
+		{"negative defaults", -5, DefaultSLATarget},
+		{"over 100 defaults", 101, DefaultSLATarget},
+		{"exactly 100", 100, 100},
+		{"low target", 90, 90},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			system, _ := NewSystem("Test", "", "", "")
+			system.SetSLATarget(tt.target)
+
+			if system.SLATarget != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, system.SLATarget)
+			}
+		})
+	}
+}
+
+func TestSystem_IsSLAMet(t *testing.T) {
+	tests := []struct {
+		name          string
+		slaTarget     float64
+		uptimePercent float64
+		expected      bool
+	}{
+		{"met exactly", 99.9, 99.9, true},
+		{"exceeded", 99.9, 99.95, true},
+		{"not met", 99.9, 99.8, false},
+		{"perfect uptime", 99.9, 100, true},
+		{"zero uptime", 99.9, 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			system := &System{SLATarget: tt.slaTarget}
+			result := system.IsSLAMet(tt.uptimePercent)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
