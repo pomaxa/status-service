@@ -1,0 +1,350 @@
+{{define "title"}}SLA Reports{{end}}
+
+{{define "content"}}
+<div class="page-header">
+    <h1>SLA Reports</h1>
+    <div class="header-actions">
+        <button class="btn btn-primary" onclick="generateReport()">Generate Report</button>
+    </div>
+</div>
+
+{{if .Breaches}}
+<section class="card alert-card">
+    <h2>Unacknowledged SLA Breaches</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>System</th>
+                <th>Type</th>
+                <th>Target</th>
+                <th>Actual</th>
+                <th>Period</th>
+                <th>Detected</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Breaches}}
+            <tr class="breach-row">
+                <td>{{.SystemName}}</td>
+                <td>{{.BreachType}}</td>
+                <td>{{printf "%.2f" .SLATarget}}%</td>
+                <td class="critical">{{printf "%.2f" .ActualValue}}%</td>
+                <td>{{.Period}}</td>
+                <td>{{.DetectedAt.Format "2006-01-02 15:04"}}</td>
+                <td>
+                    <button class="btn btn-small" onclick="acknowledgeBreach({{.ID}})">Acknowledge</button>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</section>
+{{end}}
+
+{{if .Systems}}
+<section class="card">
+    <h2>Current SLA Status (30 days)</h2>
+    <table class="data-table sla-status-table">
+        <thead>
+            <tr>
+                <th>System</th>
+                <th>SLA Target</th>
+                <th>Uptime</th>
+                <th>Status</th>
+                <th>Delta</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Systems}}
+            <tr>
+                <td>
+                    <a href="/systems/{{.ID}}">{{.Name}}</a>
+                </td>
+                <td>
+                    <span class="sla-target">{{printf "%.2f" .SLATarget}}%</span>
+                </td>
+                {{if .SLAStatus}}
+                <td class="{{if ge .SLAStatus.UptimePercent .SLATarget}}excellent{{else if ge .SLAStatus.UptimePercent 99.0}}good{{else if ge .SLAStatus.UptimePercent 95.0}}warning{{else}}critical{{end}}">
+                    {{printf "%.2f" .SLAStatus.UptimePercent}}%
+                </td>
+                <td>
+                    <span class="status-badge {{if .SLAStatus.SLAMet}}status-green{{else}}status-red{{end}}">
+                        {{.SLAStatus.StatusSummary}}
+                    </span>
+                </td>
+                <td class="{{if ge .SLAStatus.SLADelta 0}}positive{{else}}negative{{end}}">
+                    {{if ge .SLAStatus.SLADelta 0}}+{{end}}{{printf "%.2f" .SLAStatus.SLADelta}}%
+                </td>
+                {{else}}
+                <td colspan="3">No data</td>
+                {{end}}
+                <td>
+                    <button class="btn btn-small" onclick="editSLATarget({{.ID}}, {{.SLATarget}})">Edit Target</button>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</section>
+{{end}}
+
+{{if .Reports}}
+<section class="card">
+    <h2>Generated Reports</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Period</th>
+                <th>Generated</th>
+                <th>Overall Uptime</th>
+                <th>Systems</th>
+                <th>Meeting SLA</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Reports}}
+            <tr>
+                <td>{{.Title}}</td>
+                <td>{{.Period}}</td>
+                <td>{{.GeneratedAt.Format "2006-01-02 15:04"}}</td>
+                <td class="{{if ge .OverallUptime 99.9}}excellent{{else if ge .OverallUptime 99.0}}good{{else}}warning{{end}}">
+                    {{printf "%.2f" .OverallUptime}}%
+                </td>
+                <td>{{.TotalSystems}}</td>
+                <td>
+                    <span class="{{if eq .SystemsMeetingSLA .TotalSystems}}excellent{{else if gt .SystemsMeetingSLA 0}}warning{{else}}critical{{end}}">
+                        {{.SystemsMeetingSLA}}/{{.TotalSystems}}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn btn-small" onclick="viewReport({{.ID}})">View</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteReport({{.ID}})">Delete</button>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</section>
+{{else}}
+<section class="card info-card">
+    <h2>No Reports Yet</h2>
+    <p>Click "Generate Report" to create your first SLA report.</p>
+</section>
+{{end}}
+
+<!-- Generate Report Modal -->
+<div id="generateModal" class="modal" style="display:none">
+    <div class="modal-content">
+        <h3>Generate SLA Report</h3>
+        <form id="generateForm" class="admin-form">
+            <div class="form-row">
+                <input type="text" id="reportTitle" placeholder="Report Title" value="SLA Report">
+            </div>
+            <div class="form-row">
+                <label>Period:</label>
+                <select id="reportPeriod">
+                    <option value="daily">Daily (24h)</option>
+                    <option value="weekly">Weekly (7d)</option>
+                    <option value="monthly" selected>Monthly (30d)</option>
+                    <option value="quarterly">Quarterly (90d)</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Generate</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit SLA Target Modal -->
+<div id="editTargetModal" class="modal" style="display:none">
+    <div class="modal-content">
+        <h3>Edit SLA Target</h3>
+        <form id="editTargetForm" class="admin-form">
+            <input type="hidden" id="targetSystemId">
+            <div class="form-row">
+                <label>SLA Target (%):</label>
+                <input type="number" id="newSLATarget" step="0.01" min="0" max="100" required>
+            </div>
+            <p class="form-hint">Common targets: 99.9% (8.76h/year downtime), 99.99% (52.6min/year downtime)</p>
+            <div class="modal-buttons">
+                <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- View Report Modal -->
+<div id="viewReportModal" class="modal" style="display:none">
+    <div class="modal-content modal-large">
+        <h3 id="reportModalTitle">SLA Report</h3>
+        <div id="reportContent">Loading...</div>
+        <div class="modal-buttons">
+            <button type="button" class="btn" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function generateReport() {
+    document.getElementById('generateModal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('generateModal').style.display = 'none';
+    document.getElementById('editTargetModal').style.display = 'none';
+    document.getElementById('viewReportModal').style.display = 'none';
+}
+
+document.getElementById('generateForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = document.getElementById('reportTitle').value;
+    const period = document.getElementById('reportPeriod').value;
+
+    try {
+        const res = await fetch('/api/sla/reports', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title, period})
+        });
+
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to generate report');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+});
+
+function editSLATarget(systemId, currentTarget) {
+    document.getElementById('targetSystemId').value = systemId;
+    document.getElementById('newSLATarget').value = currentTarget;
+    document.getElementById('editTargetModal').style.display = 'flex';
+}
+
+document.getElementById('editTargetForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const systemId = document.getElementById('targetSystemId').value;
+    const slaTarget = parseFloat(document.getElementById('newSLATarget').value);
+
+    try {
+        const res = await fetch(`/api/systems/${systemId}/sla-target`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({sla_target: slaTarget})
+        });
+
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to update SLA target');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+});
+
+async function acknowledgeBreach(id) {
+    if (!confirm('Acknowledge this SLA breach?')) return;
+
+    try {
+        const res = await fetch(`/api/sla/breaches/${id}/acknowledge`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
+        });
+
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to acknowledge breach');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+
+async function viewReport(id) {
+    const modal = document.getElementById('viewReportModal');
+    const content = document.getElementById('reportContent');
+    content.innerHTML = 'Loading...';
+    modal.style.display = 'flex';
+
+    try {
+        const res = await fetch(`/api/sla/reports/${id}`);
+        if (!res.ok) throw new Error('Failed to load report');
+
+        const report = await res.json();
+        document.getElementById('reportModalTitle').textContent = report.title;
+
+        let html = `
+            <div class="report-summary">
+                <div class="metric"><span class="metric-value">${report.overall_uptime.toFixed(2)}%</span><span class="metric-label">Overall Uptime</span></div>
+                <div class="metric"><span class="metric-value">${report.total_systems}</span><span class="metric-label">Systems</span></div>
+                <div class="metric"><span class="metric-value">${report.systems_meeting_sla}</span><span class="metric-label">Meeting SLA</span></div>
+                <div class="metric"><span class="metric-value">${report.systems_breaching_sla}</span><span class="metric-label">Breaching SLA</span></div>
+            </div>
+            <h4>Per-System Details</h4>
+            <table class="data-table">
+                <thead>
+                    <tr><th>System</th><th>Target</th><th>Uptime</th><th>Status</th><th>Incidents</th></tr>
+                </thead>
+                <tbody>
+        `;
+
+        for (const sys of report.system_reports || []) {
+            const statusClass = sys.sla_met ? 'excellent' : 'critical';
+            html += `
+                <tr>
+                    <td>${sys.system_name}</td>
+                    <td>${sys.sla_target.toFixed(2)}%</td>
+                    <td class="${statusClass}">${sys.uptime_percent.toFixed(2)}%</td>
+                    <td>${sys.status_summary}</td>
+                    <td>${sys.total_incidents}</td>
+                </tr>
+            `;
+        }
+
+        html += '</tbody></table>';
+        content.innerHTML = html;
+    } catch (err) {
+        content.innerHTML = '<p class="error">Failed to load report</p>';
+    }
+}
+
+async function deleteReport(id) {
+    if (!confirm('Delete this report?')) return;
+
+    try {
+        const res = await fetch(`/api/sla/reports/${id}`, {method: 'DELETE'});
+        if (res.ok) {
+            location.reload();
+        } else {
+            alert('Failed to delete report');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+}
+
+// Close modals on outside click
+['generateModal', 'editTargetModal', 'viewReportModal'].forEach(id => {
+    document.getElementById(id).addEventListener('click', (e) => {
+        if (e.target.id === id) closeModal();
+    });
+});
+</script>
+{{end}}

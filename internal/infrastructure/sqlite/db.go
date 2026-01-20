@@ -191,6 +191,50 @@ CREATE INDEX IF NOT EXISTS idx_latency_history_created_at ON latency_history(cre
 CREATE INDEX IF NOT EXISTS idx_latency_history_dep_time ON latency_history(dependency_id, created_at);
 `,
 	},
+	{
+		Version: 7,
+		Name:    "add_sla_target",
+		SQL: `
+ALTER TABLE systems ADD COLUMN sla_target REAL NOT NULL DEFAULT 99.9;
+
+CREATE TABLE IF NOT EXISTS sla_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    period TEXT NOT NULL,
+    period_start DATETIME NOT NULL,
+    period_end DATETIME NOT NULL,
+    generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    generated_by TEXT NOT NULL DEFAULT '',
+    overall_uptime REAL NOT NULL DEFAULT 0,
+    overall_availability REAL NOT NULL DEFAULT 0,
+    total_systems INTEGER NOT NULL DEFAULT 0,
+    systems_meeting_sla INTEGER NOT NULL DEFAULT 0,
+    systems_breaching_sla INTEGER NOT NULL DEFAULT 0,
+    report_data TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS sla_breaches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    system_id INTEGER NOT NULL,
+    breach_type TEXT NOT NULL DEFAULT 'uptime',
+    sla_target REAL NOT NULL,
+    actual_value REAL NOT NULL,
+    period TEXT NOT NULL,
+    period_start DATETIME NOT NULL,
+    period_end DATETIME NOT NULL,
+    detected_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    acknowledged BOOLEAN NOT NULL DEFAULT 0,
+    acked_by TEXT NOT NULL DEFAULT '',
+    acked_at DATETIME,
+    FOREIGN KEY (system_id) REFERENCES systems(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_sla_reports_period ON sla_reports(period_start, period_end);
+CREATE INDEX IF NOT EXISTS idx_sla_breaches_system_id ON sla_breaches(system_id);
+CREATE INDEX IF NOT EXISTS idx_sla_breaches_detected_at ON sla_breaches(detected_at);
+CREATE INDEX IF NOT EXISTS idx_sla_breaches_acknowledged ON sla_breaches(acknowledged);
+`,
+	},
 }
 
 // New creates a new SQLite database connection

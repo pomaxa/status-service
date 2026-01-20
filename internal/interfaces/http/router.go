@@ -19,7 +19,9 @@ type Server struct {
 	maintenanceService *application.MaintenanceService
 	incidentService    *application.IncidentService
 	latencyService     *application.LatencyService
+	slaService         *application.SLAService
 	webhookHandlers    *WebhookHandlers
+	slaHandlers        *SLAHandlers
 	apiKeyHandlers     *APIKeyHandlers
 	authMiddleware     *AuthMiddleware
 	templateDir        string
@@ -34,7 +36,9 @@ func NewServer(
 	maintenanceService *application.MaintenanceService,
 	incidentService *application.IncidentService,
 	latencyService *application.LatencyService,
+	slaService *application.SLAService,
 	webhookHandlers *WebhookHandlers,
+	slaHandlers *SLAHandlers,
 	apiKeyHandlers *APIKeyHandlers,
 	authMiddleware *AuthMiddleware,
 	templateDir string,
@@ -48,7 +52,9 @@ func NewServer(
 		maintenanceService: maintenanceService,
 		incidentService:    incidentService,
 		latencyService:     latencyService,
+		slaService:         slaService,
 		webhookHandlers:    webhookHandlers,
+		slaHandlers:        slaHandlers,
 		apiKeyHandlers:     apiKeyHandlers,
 		authMiddleware:     authMiddleware,
 		templateDir:        templateDir,
@@ -94,6 +100,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/admin", s.handleAdmin)
 		r.Get("/logs", s.handleLogs)
 		r.Get("/analytics", s.handleAnalyticsPage)
+		r.Get("/sla", s.handleSLAPage)
 	})
 
 	// REST API routes
@@ -176,6 +183,20 @@ func (s *Server) setupRoutes() {
 			r.Post("/apikeys", s.apiKeyHandlers.CreateAPIKey)
 			r.Delete("/apikeys/{id}", s.apiKeyHandlers.DeleteAPIKey)
 			r.Put("/apikeys/{id}/toggle", s.apiKeyHandlers.ToggleAPIKey)
+		}
+
+		// SLA Reports and Breaches
+		if s.slaHandlers != nil {
+			r.Post("/sla/reports", s.slaHandlers.GenerateReport)
+			r.Get("/sla/reports", s.slaHandlers.GetReports)
+			r.Get("/sla/reports/{id}", s.slaHandlers.GetReport)
+			r.Delete("/sla/reports/{id}", s.slaHandlers.DeleteReport)
+			r.Get("/sla/breaches", s.slaHandlers.GetBreaches)
+			r.Post("/sla/breaches/check", s.slaHandlers.CheckBreaches)
+			r.Post("/sla/breaches/{id}/acknowledge", s.slaHandlers.AcknowledgeBreach)
+			r.Get("/systems/{id}/sla", s.slaHandlers.GetSystemSLA)
+			r.Put("/systems/{id}/sla-target", s.slaHandlers.UpdateSystemSLATarget)
+			r.Get("/systems/{id}/sla/breaches", s.slaHandlers.GetSystemBreaches)
 		}
 	})
 }

@@ -169,3 +169,45 @@ type IncidentRepository interface {
 	// GetUpdates retrieves all updates for an incident
 	GetUpdates(ctx context.Context, incidentID int64) ([]*IncidentUpdate, error)
 }
+
+// SLAReportRepository defines operations for SLA Report persistence
+type SLAReportRepository interface {
+	// Create persists a new SLA report
+	Create(ctx context.Context, report *SLAReport) error
+
+	// GetByID retrieves an SLA report by ID
+	GetByID(ctx context.Context, id int64) (*SLAReport, error)
+
+	// GetAll retrieves all SLA reports with optional limit
+	GetAll(ctx context.Context, limit int) ([]*SLAReport, error)
+
+	// GetByPeriod retrieves reports within a time range
+	GetByPeriod(ctx context.Context, start, end time.Time) ([]*SLAReport, error)
+
+	// Delete removes an SLA report by ID
+	Delete(ctx context.Context, id int64) error
+}
+
+// SLABreachRepository defines operations for SLA Breach persistence
+type SLABreachRepository interface {
+	// Create persists a new SLA breach
+	Create(ctx context.Context, breach *SLABreachEvent) error
+
+	// GetByID retrieves an SLA breach by ID
+	GetByID(ctx context.Context, id int64) (*SLABreachEvent, error)
+
+	// GetAll retrieves all breaches with optional limit
+	GetAll(ctx context.Context, limit int) ([]*SLABreachEvent, error)
+
+	// GetUnacknowledged retrieves all unacknowledged breaches
+	GetUnacknowledged(ctx context.Context) ([]*SLABreachEvent, error)
+
+	// GetBySystemID retrieves breaches for a system
+	GetBySystemID(ctx context.Context, systemID int64, limit int) ([]*SLABreachEvent, error)
+
+	// Acknowledge marks a breach as acknowledged
+	Acknowledge(ctx context.Context, id int64, ackedBy string) error
+
+	// GetByPeriod retrieves breaches within a time range
+	GetByPeriod(ctx context.Context, start, end time.Time) ([]*SLABreachEvent, error)
+}

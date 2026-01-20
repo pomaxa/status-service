@@ -47,6 +47,17 @@ type analyticsPageData struct {
 	Systems  []*systemWithDeps
 }
 
+type slaPageData struct {
+	Reports     []*domain.SLAReport
+	Breaches    []*domain.SLABreachEvent
+	Systems     []*systemWithSLA
+}
+
+type systemWithSLA struct {
+	*domain.System
+	SLAStatus *domain.SystemSLAReport
+}
+
 type publicStatusData struct {
 	Title               string
 	Systems             []*systemWithDeps
@@ -685,4 +696,37 @@ func escapeLabel(s string) string {
 		}
 	}
 	return string(result)
+}
+
+func (s *Server) handleSLAPage(w http.ResponseWriter, r *http.Request) {
+	if s.slaService == nil {
+		http.Error(w, "SLA service not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	reports, _ := s.slaService.GetAllReports(r.Context(), 10)
+	breaches, _ := s.slaService.GetUnacknowledgedBreaches(r.Context())
+
+	systems, _ := s.systemService.GetAllSystems(r.Context())
+	var systemsWithSLA []*systemWithSLA
+	for _, sys := range systems {
+		slaStatus, _ := s.slaService.GetSystemSLAStatus(r.Context(), sys.ID, "monthly")
+		systemsWithSLA = append(systemsWithSLA, &systemWithSLA{
+			System:    sys,
+			SLAStatus: slaStatus,
+		})
+	}
+
+	tmpl, err := s.loadTemplate("sla")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	tmpl.Execute(w, slaPageData{
+		Reports:  reports,
+		Breaches: breaches,
+		Systems:  systemsWithSLA,
+	})
 }

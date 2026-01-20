@@ -25,6 +25,7 @@ const (
 	EventStatusChange  WebhookEvent = "status_change"
 	EventIncidentStart WebhookEvent = "incident_start"
 	EventIncidentEnd   WebhookEvent = "incident_end"
+	EventSLABreach     WebhookEvent = "sla_breach"
 )
 
 // Webhook represents a notification webhook configuration
@@ -250,4 +251,16 @@ func StatusText(s Status) string {
 	default:
 		return "Unknown"
 	}
+}
+
+// SLABreachPayload represents an SLA breach notification
+type SLABreachPayload struct {
+	Event       WebhookEvent `json:"event"`
+	Timestamp   time.Time    `json:"timestamp"`
+	System      *SystemInfo  `json:"system"`
+	BreachType  string       `json:"breach_type"`
+	SLATarget   float64      `json:"sla_target"`
+	ActualValue float64      `json:"actual_value"`
+	Period      string       `json:"period"`
+	Message     string       `json:"message"`
 }

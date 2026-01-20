@@ -81,6 +81,8 @@ func main() {
 	incidentRepo := sqlite.NewIncidentRepo(db)
 	apiKeyRepo := sqlite.NewAPIKeyRepo(db)
 	latencyRepo := sqlite.NewLatencyRepo(db)
+	slaReportRepo := sqlite.NewSLAReportRepo(db)
+	slaBreachRepo := sqlite.NewSLABreachRepo(db)
 
 	// Initialize health checker
 	checker := http_checker.New(10 * time.Second)
@@ -94,6 +96,11 @@ func main() {
 	incidentService := application.NewIncidentService(incidentRepo)
 	latencyService := application.NewLatencyService(latencyRepo, depRepo)
 	notificationService := application.NewNotificationService(webhookRepo, systemRepo, depRepo)
+	slaService := application.NewSLAService(
+		systemRepo, depRepo, analyticsRepo,
+		slaReportRepo, slaBreachRepo, latencyRepo,
+		notificationService,
+	)
 
 	// Set notification service on other services
 	systemService.SetNotificationService(notificationService)
@@ -103,6 +110,9 @@ func main() {
 
 	// Initialize webhook handlers
 	webhookHandlers := httpserver.NewWebhookHandlers(webhookRepo, notificationService)
+
+	// Initialize SLA handlers
+	slaHandlers := httpserver.NewSLAHandlers(slaService)
 
 	// Initialize auth middleware
 	var authMiddleware *httpserver.AuthMiddleware
@@ -126,7 +136,9 @@ func main() {
 		maintenanceService,
 		incidentService,
 		latencyService,
+		slaService,
 		webhookHandlers,
+		slaHandlers,
 		apiKeyHandlers,
 		authMiddleware,
 		*templateDir,

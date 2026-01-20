@@ -13,12 +13,16 @@ type System struct {
 	ID          int64
 	Name        string
 	Description string
-	URL         string // link to the system
-	Owner       string // responsible person/team
+	URL         string  // link to the system
+	Owner       string  // responsible person/team
 	Status      Status
+	SLATarget   float64 // SLA target percentage (e.g., 99.9)
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
+
+// DefaultSLATarget is the default SLA target if not specified
+const DefaultSLATarget = 99.9
 
 // NewSystem creates a new System with validation
 func NewSystem(name, description, url, owner string) (*System, error) {
@@ -35,9 +39,33 @@ func NewSystem(name, description, url, owner string) (*System, error) {
 		URL:         strings.TrimSpace(url),
 		Owner:       strings.TrimSpace(owner),
 		Status:      StatusGreen, // default healthy
+		SLATarget:   DefaultSLATarget,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil
+}
+
+// GetSLATarget returns the SLA target, defaulting if not set
+func (s *System) GetSLATarget() float64 {
+	if s.SLATarget <= 0 {
+		return DefaultSLATarget
+	}
+	return s.SLATarget
+}
+
+// SetSLATarget sets the SLA target with validation
+func (s *System) SetSLATarget(target float64) {
+	if target <= 0 || target > 100 {
+		s.SLATarget = DefaultSLATarget
+	} else {
+		s.SLATarget = target
+	}
+	s.UpdatedAt = time.Now()
+}
+
+// IsSLAMet checks if the given uptime meets the SLA target
+func (s *System) IsSLAMet(uptimePercent float64) bool {
+	return uptimePercent >= s.GetSLATarget()
 }
 
 // UpdateStatus changes system status with validation

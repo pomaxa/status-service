@@ -20,8 +20,8 @@ func NewSystemRepo(db *DB) *SystemRepo {
 // Create persists a new system and sets its ID
 func (r *SystemRepo) Create(ctx context.Context, system *domain.System) error {
 	query := `
-		INSERT INTO systems (name, description, url, owner, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO systems (name, description, url, owner, status, sla_target, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	result, err := r.db.ExecContext(ctx, query,
@@ -30,6 +30,7 @@ func (r *SystemRepo) Create(ctx context.Context, system *domain.System) error {
 		system.URL,
 		system.Owner,
 		system.Status.String(),
+		system.GetSLATarget(),
 		system.CreatedAt,
 		system.UpdatedAt,
 	)
@@ -49,7 +50,7 @@ func (r *SystemRepo) Create(ctx context.Context, system *domain.System) error {
 // GetByID retrieves a system by ID
 func (r *SystemRepo) GetByID(ctx context.Context, id int64) (*domain.System, error) {
 	query := `
-		SELECT id, name, description, url, owner, status, created_at, updated_at
+		SELECT id, name, description, url, owner, status, sla_target, created_at, updated_at
 		FROM systems
 		WHERE id = ?
 	`
@@ -64,6 +65,7 @@ func (r *SystemRepo) GetByID(ctx context.Context, id int64) (*domain.System, err
 		&system.URL,
 		&system.Owner,
 		&statusStr,
+		&system.SLATarget,
 		&system.CreatedAt,
 		&system.UpdatedAt,
 	)
@@ -84,7 +86,7 @@ func (r *SystemRepo) GetByID(ctx context.Context, id int64) (*domain.System, err
 // GetAll retrieves all systems
 func (r *SystemRepo) GetAll(ctx context.Context) ([]*domain.System, error) {
 	query := `
-		SELECT id, name, description, url, owner, status, created_at, updated_at
+		SELECT id, name, description, url, owner, status, sla_target, created_at, updated_at
 		FROM systems
 		ORDER BY name ASC
 	`
@@ -107,6 +109,7 @@ func (r *SystemRepo) GetAll(ctx context.Context) ([]*domain.System, error) {
 			&system.URL,
 			&system.Owner,
 			&statusStr,
+			&system.SLATarget,
 			&system.CreatedAt,
 			&system.UpdatedAt,
 		); err != nil {
@@ -129,7 +132,7 @@ func (r *SystemRepo) GetAll(ctx context.Context) ([]*domain.System, error) {
 func (r *SystemRepo) Update(ctx context.Context, system *domain.System) error {
 	query := `
 		UPDATE systems
-		SET name = ?, description = ?, url = ?, owner = ?, status = ?, updated_at = ?
+		SET name = ?, description = ?, url = ?, owner = ?, status = ?, sla_target = ?, updated_at = ?
 		WHERE id = ?
 	`
 
@@ -139,6 +142,7 @@ func (r *SystemRepo) Update(ctx context.Context, system *domain.System) error {
 		system.URL,
 		system.Owner,
 		system.Status.String(),
+		system.GetSLATarget(),
 		system.UpdatedAt,
 		system.ID,
 	)

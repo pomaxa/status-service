@@ -343,6 +343,155 @@ func (s *NotificationService) SendTestNotification(ctx context.Context, webhookI
 	return nil
 }
 
+// NotifySLABreach sends notifications for an SLA breach
+func (s *NotificationService) NotifySLABreach(ctx context.Context, breach *domain.SLABreachEvent) {
+	webhooks, err := s.webhookRepo.GetEnabled(ctx)
+	if err != nil {
+		logError("Failed to get webhooks: %v", err)
+		return
+	}
+
+	if len(webhooks) == 0 {
+		return
+	}
+
+	// Build payload
+	payload := &domain.SLABreachPayload{
+		Event:     domain.EventSLABreach,
+		Timestamp: breach.DetectedAt,
+		System: &domain.SystemInfo{
+			ID:   breach.SystemID,
+			Name: breach.SystemName,
+		},
+		BreachType:  breach.BreachType,
+		SLATarget:   breach.SLATarget,
+		ActualValue: breach.ActualValue,
+		Period:      breach.Period,
+		Message:     fmt.Sprintf("SLA target %.2f%% not met (actual: %.2f%%)", breach.SLATarget, breach.ActualValue),
+	}
+
+	// Send to matching webhooks
+	for _, webhook := range webhooks {
+		if webhook.ShouldTrigger(domain.EventSLABreach, breach.SystemID) {
+			go s.sendSLABreachNotification(webhook, payload)
+		}
+	}
+}
+
+func (s *NotificationService) sendSLABreachNotification(webhook *domain.Webhook, payload *domain.SLABreachPayload) {
+	var body []byte
+	var err error
+
+	switch webhook.Type {
+	case domain.WebhookTypeSlack:
+		body, err = s.formatSlackSLABreach(payload)
+	case domain.WebhookTypeTelegram:
+		body, err = s.formatTelegramSLABreach(webhook.URL, payload)
+	case domain.WebhookTypeDiscord:
+		body, err = s.formatDiscordSLABreach(payload)
+	default:
+		body, err = json.Marshal(payload)
+	}
+
+	if err != nil {
+		logError("Failed to format SLA breach payload for webhook %s: %v", webhook.Name, err)
+		return
+	}
+
+	url := webhook.URL
+	if webhook.Type == domain.WebhookTypeTelegram {
+		if !strings.Contains(url, "api.telegram.org") {
+			parts := strings.SplitN(url, ":", 2)
+			if len(parts) == 2 {
+				url = fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", parts[0])
+			}
+		}
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		logError("Failed to create request for webhook %s: %v", webhook.Name, err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "StatusIncident-Webhook/1.0")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		logError("Failed to send webhook %s: %v", webhook.Name, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		logError("Webhook %s returned status %d", webhook.Name, resp.StatusCode)
+	}
+}
+
+func (s *NotificationService) formatSlackSLABreach(payload *domain.SLABreachPayload) ([]byte, error) {
+	slackPayload := map[string]interface{}{
+		"text": fmt.Sprintf("⚠️ *SLA Breach* - *%s*", payload.System.Name),
+		"attachments": []map[string]interface{}{
+			{
+				"color": "danger",
+				"fields": []map[string]interface{}{
+					{"title": "System", "value": payload.System.Name, "short": true},
+					{"title": "Period", "value": payload.Period, "short": true},
+					{"title": "Target", "value": fmt.Sprintf("%.2f%%", payload.SLATarget), "short": true},
+					{"title": "Actual", "value": fmt.Sprintf("%.2f%%", payload.ActualValue), "short": true},
+					{"title": "Message", "value": payload.Message, "short": false},
+				},
+			},
+		},
+	}
+
+	return json.Marshal(slackPayload)
+}
+
+func (s *NotificationService) formatTelegramSLABreach(webhookURL string, payload *domain.SLABreachPayload) ([]byte, error) {
+	text := fmt.Sprintf("⚠️ <b>SLA Breach - %s</b>\n\nPeriod: %s\nTarget: %.2f%%\nActual: %.2f%%\n\n%s",
+		payload.System.Name, payload.Period, payload.SLATarget, payload.ActualValue, payload.Message)
+
+	chatID := ""
+	if !strings.Contains(webhookURL, "api.telegram.org") {
+		parts := strings.SplitN(webhookURL, ":", 2)
+		if len(parts) == 2 {
+			chatID = parts[1]
+		}
+	}
+
+	telegramPayload := map[string]interface{}{
+		"text":       text,
+		"parse_mode": "HTML",
+	}
+	if chatID != "" {
+		telegramPayload["chat_id"] = chatID
+	}
+
+	return json.Marshal(telegramPayload)
+}
+
+func (s *NotificationService) formatDiscordSLABreach(payload *domain.SLABreachPayload) ([]byte, error) {
+	discordPayload := map[string]interface{}{
+		"content": fmt.Sprintf("⚠️ **SLA Breach** - **%s**", payload.System.Name),
+		"embeds": []map[string]interface{}{
+			{
+				"color": 15548997, // red
+				"fields": []map[string]interface{}{
+					{"name": "System", "value": payload.System.Name, "inline": true},
+					{"name": "Period", "value": payload.Period, "inline": true},
+					{"name": "Target", "value": fmt.Sprintf("%.2f%%", payload.SLATarget), "inline": true},
+					{"name": "Actual", "value": fmt.Sprintf("%.2f%%", payload.ActualValue), "inline": true},
+					{"name": "Message", "value": payload.Message, "inline": false},
+				},
+			},
+		},
+	}
+
+	return json.Marshal(discordPayload)
+}
+
 func logError(format string, args ...interface{}) {
 	log.Printf("[WEBHOOK ERROR] "+format, args...)
 }

@@ -1168,3 +1168,95 @@ textarea {
     color: white;
     border-color: #3b82f6;
 }
+
+/* SLA Reports */
+.alert-card {
+    border-left: 4px solid #ef4444;
+    background: #fef2f2;
+}
+
+.alert-card h2 {
+    color: #991b1b;
+}
+
+.breach-row {
+    background: #fef2f2;
+}
+
+.sla-target {
+    font-weight: 600;
+    color: #374151;
+}
+
+.positive {
+    color: #16a34a;
+    font-weight: 500;
+}
+
+.negative {
+    color: #dc2626;
+    font-weight: 500;
+}
+
+.modal-large {
+    max-width: 800px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.report-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #f9fafb;
+    border-radius: 8px;
+}
+
+.report-summary .metric {
+    text-align: center;
+}
+
+.report-summary .metric-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #374151;
+}
+
+.report-summary .metric-label {
+    display: block;
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+}
+
+.sla-status-table td.excellent {
+    color: #16a34a;
+    font-weight: 500;
+}
+
+.sla-status-table td.good {
+    color: #2563eb;
+}
+
+.sla-status-table td.warning {
+    color: #d97706;
+}
+
+.sla-status-table td.critical {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.header-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+@media (max-width: 600px) {
+    .report-summary {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
