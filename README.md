@@ -389,6 +389,70 @@ The heartbeat checker sends requests with:
 - **User-Agent:** `StatusIncident-HealthChecker/1.0`
 - **Redirects:** Follows up to 10 redirects
 
+## Prometheus Metrics
+
+The `/metrics` endpoint exposes metrics in Prometheus format for monitoring and alerting.
+
+### Available Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `status_incident_system_status` | gauge | system_id, system_name | System status (0=green, 1=yellow, 2=red) |
+| `status_incident_system_sla_target` | gauge | system_id, system_name | SLA target percentage |
+| `status_incident_uptime_24h` | gauge | system_id, system_name | Uptime percentage over last 24h |
+| `status_incident_dependency_status` | gauge | system_id, system_name, dependency_id, dependency_name | Dependency status |
+| `status_incident_dependency_latency_ms` | gauge | system_id, system_name, dependency_id, dependency_name | Last check latency in ms |
+| `status_incident_dependency_consecutive_failures` | gauge | system_id, system_name, dependency_id, dependency_name | Consecutive check failures |
+| `status_incident_systems_total` | gauge | - | Total number of systems |
+| `status_incident_dependencies_total` | gauge | - | Total number of dependencies |
+| `status_incident_incidents_active` | gauge | - | Number of active incidents |
+| `status_incident_incidents_total` | gauge | - | Total number of incidents |
+| `status_incident_incidents_by_severity` | gauge | severity | Incidents count by severity |
+| `status_incident_incidents_by_status` | gauge | status | Incidents count by status |
+| `status_incident_maintenances_active` | gauge | - | Active maintenance windows |
+| `status_incident_maintenances_scheduled` | gauge | - | Scheduled maintenance windows |
+| `status_incident_sla_breaches_unacknowledged` | gauge | - | Unacknowledged SLA breaches |
+
+### Prometheus Configuration
+
+```yaml
+scrape_configs:
+  - job_name: 'status-incident'
+    static_configs:
+      - targets: ['localhost:8080']
+    scrape_interval: 30s
+```
+
+### Example Alerting Rules
+
+```yaml
+groups:
+  - name: status-incident
+    rules:
+      - alert: SystemDown
+        expr: status_incident_system_status == 2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "System {{ $labels.system_name }} is down"
+
+      - alert: HighLatency
+        expr: status_incident_dependency_latency_ms > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency on {{ $labels.dependency_name }}"
+
+      - alert: SLABreach
+        expr: status_incident_sla_breaches_unacknowledged > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Unacknowledged SLA breach detected"
+```
+
 ## Documentation
 
 - [Health Check Implementation Guide](docs/HEALTHCHECK_GUIDE.md) - How to implement health endpoints for your services
