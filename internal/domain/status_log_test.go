@@ -57,36 +57,36 @@ func TestStatusLog_IsIncidentEnd(t *testing.T) {
 	}
 }
 
-func TestIncident_IsResolved(t *testing.T) {
+func TestIncidentPeriod_IsResolved(t *testing.T) {
 	now := time.Now()
 
-	// Ongoing incident
-	ongoing := Incident{
+	// Ongoing incident period
+	ongoing := IncidentPeriod{
 		StartedAt: now.Add(-1 * time.Hour),
 		EndedAt:   nil,
 	}
 	if ongoing.IsResolved() {
-		t.Error("Ongoing incident should not be resolved")
+		t.Error("Ongoing incident period should not be resolved")
 	}
 
-	// Resolved incident
+	// Resolved incident period
 	endTime := now
-	resolved := Incident{
+	resolved := IncidentPeriod{
 		StartedAt: now.Add(-1 * time.Hour),
 		EndedAt:   &endTime,
 		Duration:  1 * time.Hour,
 	}
 	if !resolved.IsResolved() {
-		t.Error("Resolved incident should be resolved")
+		t.Error("Resolved incident period should be resolved")
 	}
 }
 
-func TestIncident_GetDuration(t *testing.T) {
+func TestIncidentPeriod_GetDuration(t *testing.T) {
 	now := time.Now()
 
-	// Resolved incident - should return stored duration
+	// Resolved incident period - should return stored duration
 	endTime := now
-	resolved := Incident{
+	resolved := IncidentPeriod{
 		StartedAt: now.Add(-2 * time.Hour),
 		EndedAt:   &endTime,
 		Duration:  2 * time.Hour,
@@ -95,8 +95,8 @@ func TestIncident_GetDuration(t *testing.T) {
 		t.Errorf("GetDuration() = %v, want %v", resolved.GetDuration(), 2*time.Hour)
 	}
 
-	// Ongoing incident - should calculate from start to now
-	ongoing := Incident{
+	// Ongoing incident period - should calculate from start to now
+	ongoing := IncidentPeriod{
 		StartedAt: now.Add(-30 * time.Minute),
 		EndedAt:   nil,
 	}
@@ -139,39 +139,39 @@ func TestCalculateMTTR(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		incidents []Incident
+		incidents []IncidentPeriod
 		want      time.Duration
 	}{
 		{
 			name:      "no incidents",
-			incidents: []Incident{},
+			incidents: []IncidentPeriod{},
 			want:      0,
 		},
 		{
-			name: "one resolved incident",
-			incidents: []Incident{
+			name: "one resolved incident period",
+			incidents: []IncidentPeriod{
 				{StartedAt: now.Add(-3 * time.Hour), EndedAt: &end1, Duration: 1 * time.Hour},
 			},
 			want: 1 * time.Hour,
 		},
 		{
-			name: "two resolved incidents",
-			incidents: []Incident{
+			name: "two resolved incident periods",
+			incidents: []IncidentPeriod{
 				{StartedAt: now.Add(-5 * time.Hour), EndedAt: &end1, Duration: 2 * time.Hour},
 				{StartedAt: now.Add(-2 * time.Hour), EndedAt: &end2, Duration: 1 * time.Hour},
 			},
 			want: 90 * time.Minute, // (2h + 1h) / 2 = 1.5h
 		},
 		{
-			name: "only ongoing incidents",
-			incidents: []Incident{
+			name: "only ongoing incident periods",
+			incidents: []IncidentPeriod{
 				{StartedAt: now.Add(-1 * time.Hour), EndedAt: nil},
 			},
 			want: 0,
 		},
 		{
 			name: "mixed resolved and ongoing",
-			incidents: []Incident{
+			incidents: []IncidentPeriod{
 				{StartedAt: now.Add(-3 * time.Hour), EndedAt: &end1, Duration: 1 * time.Hour},
 				{StartedAt: now.Add(-30 * time.Minute), EndedAt: nil},
 			},

@@ -21,8 +21,8 @@ func NewAnalyticsRepo(db *DB) *AnalyticsRepo {
 	}
 }
 
-// GetIncidentsBySystemID calculates incidents for a system within time range
-func (r *AnalyticsRepo) GetIncidentsBySystemID(ctx context.Context, systemID int64, start, end time.Time) ([]domain.Incident, error) {
+// GetIncidentsBySystemID calculates incident periods for a system within time range
+func (r *AnalyticsRepo) GetIncidentsBySystemID(ctx context.Context, systemID int64, start, end time.Time) ([]domain.IncidentPeriod, error) {
 	logs, err := r.logRepo.GetSystemLogsByTimeRange(ctx, systemID, start, end)
 	if err != nil {
 		return nil, err
@@ -31,8 +31,8 @@ func (r *AnalyticsRepo) GetIncidentsBySystemID(ctx context.Context, systemID int
 	return r.calculateIncidents(logs, &systemID, nil), nil
 }
 
-// GetIncidentsByDependencyID calculates incidents for a dependency within time range
-func (r *AnalyticsRepo) GetIncidentsByDependencyID(ctx context.Context, dependencyID int64, start, end time.Time) ([]domain.Incident, error) {
+// GetIncidentsByDependencyID calculates incident periods for a dependency within time range
+func (r *AnalyticsRepo) GetIncidentsByDependencyID(ctx context.Context, dependencyID int64, start, end time.Time) ([]domain.IncidentPeriod, error) {
 	logs, err := r.logRepo.GetDependencyLogsByTimeRange(ctx, dependencyID, start, end)
 	if err != nil {
 		return nil, err
@@ -91,14 +91,14 @@ func (r *AnalyticsRepo) GetOverallAnalytics(ctx context.Context, start, end time
 	return r.buildAnalytics(0, "overall", "All Systems", start, end, logs, incidents), nil
 }
 
-func (r *AnalyticsRepo) calculateIncidents(logs []*domain.StatusLog, systemID, dependencyID *int64) []domain.Incident {
-	var incidents []domain.Incident
-	var currentIncident *domain.Incident
+func (r *AnalyticsRepo) calculateIncidents(logs []*domain.StatusLog, systemID, dependencyID *int64) []domain.IncidentPeriod {
+	var incidents []domain.IncidentPeriod
+	var currentIncident *domain.IncidentPeriod
 
 	for _, log := range logs {
 		if log.IsIncidentStart() {
-			// Start new incident
-			currentIncident = &domain.Incident{
+			// Start new incident period
+			currentIncident = &domain.IncidentPeriod{
 				SystemID:     systemID,
 				DependencyID: dependencyID,
 				StartedAt:    log.CreatedAt,
@@ -114,7 +114,7 @@ func (r *AnalyticsRepo) calculateIncidents(logs []*domain.StatusLog, systemID, d
 			}
 
 			if log.IsIncidentEnd() {
-				// End incident
+				// End incident period
 				endTime := log.CreatedAt
 				currentIncident.EndedAt = &endTime
 				currentIncident.Duration = endTime.Sub(currentIncident.StartedAt)
@@ -124,7 +124,7 @@ func (r *AnalyticsRepo) calculateIncidents(logs []*domain.StatusLog, systemID, d
 		}
 	}
 
-	// Add ongoing incident if exists
+	// Add ongoing incident period if exists
 	if currentIncident != nil {
 		incidents = append(incidents, *currentIncident)
 	}
@@ -132,7 +132,7 @@ func (r *AnalyticsRepo) calculateIncidents(logs []*domain.StatusLog, systemID, d
 	return incidents
 }
 
-func (r *AnalyticsRepo) buildAnalytics(entityID int64, entityType, entityName string, start, end time.Time, logs []*domain.StatusLog, incidents []domain.Incident) *domain.Analytics {
+func (r *AnalyticsRepo) buildAnalytics(entityID int64, entityType, entityName string, start, end time.Time, logs []*domain.StatusLog, incidents []domain.IncidentPeriod) *domain.Analytics {
 	totalDuration := end.Sub(start)
 
 	var totalDowntime, totalUnavailable, longestIncident time.Duration

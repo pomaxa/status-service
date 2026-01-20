@@ -50,8 +50,8 @@ func (l *StatusLog) IsIncidentEnd() bool {
 	return l.OldStatus != StatusGreen && l.NewStatus == StatusGreen
 }
 
-// Incident represents a period of degraded/unavailable service
-type Incident struct {
+// IncidentPeriod represents a period of degraded/unavailable service (for analytics)
+type IncidentPeriod struct {
 	ID           int64
 	SystemID     *int64
 	DependencyID *int64
@@ -62,14 +62,14 @@ type Incident struct {
 	LogCount     int    // number of status changes during incident
 }
 
-// IsResolved returns true if incident has ended
-func (i *Incident) IsResolved() bool {
+// IsResolved returns true if incident period has ended
+func (i *IncidentPeriod) IsResolved() bool {
 	return i.EndedAt != nil
 }
 
-// GetDuration returns incident duration
+// GetDuration returns incident period duration
 // If ongoing, calculates from start to now
-func (i *Incident) GetDuration() time.Duration {
+func (i *IncidentPeriod) GetDuration() time.Duration {
 	if i.EndedAt != nil {
 		return i.Duration
 	}
@@ -109,8 +109,8 @@ func CalculateUptime(greenDuration, totalDuration time.Duration) float64 {
 	return float64(greenDuration) / float64(totalDuration) * 100.0
 }
 
-// CalculateMTTR calculates Mean Time To Recovery from resolved incidents
-func CalculateMTTR(incidents []Incident) time.Duration {
+// CalculateMTTR calculates Mean Time To Recovery from resolved incident periods
+func CalculateMTTR(incidents []IncidentPeriod) time.Duration {
 	var totalDuration time.Duration
 	var resolvedCount int
 

@@ -17,6 +17,7 @@ type Server struct {
 	heartbeatService   *application.HeartbeatService
 	analyticsService   *application.AnalyticsService
 	maintenanceService *application.MaintenanceService
+	incidentService    *application.IncidentService
 	webhookHandlers    *WebhookHandlers
 	templateDir        string
 }
@@ -28,6 +29,7 @@ func NewServer(
 	heartbeatService *application.HeartbeatService,
 	analyticsService *application.AnalyticsService,
 	maintenanceService *application.MaintenanceService,
+	incidentService *application.IncidentService,
 	webhookHandlers *WebhookHandlers,
 	templateDir string,
 ) *Server {
@@ -38,6 +40,7 @@ func NewServer(
 		heartbeatService:   heartbeatService,
 		analyticsService:   analyticsService,
 		maintenanceService: maintenanceService,
+		incidentService:    incidentService,
 		webhookHandlers:    webhookHandlers,
 		templateDir:        templateDir,
 	}
@@ -129,6 +132,19 @@ func (s *Server) setupRoutes() {
 		r.Put("/maintenances/{id}", s.apiUpdateMaintenance)
 		r.Delete("/maintenances/{id}", s.apiDeleteMaintenance)
 		r.Post("/maintenances/{id}/cancel", s.apiCancelMaintenance)
+
+		// Incidents
+		r.Get("/incidents", s.apiGetIncidents)
+		r.Post("/incidents", s.apiCreateIncident)
+		r.Get("/incidents/active", s.apiGetActiveIncidents)
+		r.Get("/incidents/recent", s.apiGetRecentIncidents)
+		r.Get("/incidents/{id}", s.apiGetIncident)
+		r.Delete("/incidents/{id}", s.apiDeleteIncident)
+		r.Post("/incidents/{id}/acknowledge", s.apiAcknowledgeIncident)
+		r.Post("/incidents/{id}/status", s.apiUpdateIncidentStatus)
+		r.Post("/incidents/{id}/resolve", s.apiResolveIncident)
+		r.Get("/incidents/{id}/updates", s.apiGetIncidentUpdates)
+		r.Post("/incidents/{id}/updates", s.apiAddIncidentUpdate)
 	})
 }
 

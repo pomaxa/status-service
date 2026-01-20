@@ -118,6 +118,40 @@ CREATE INDEX IF NOT EXISTS idx_maintenances_start_time ON maintenances(start_tim
 CREATE INDEX IF NOT EXISTS idx_maintenances_end_time ON maintenances(end_time);
 `,
 	},
+	{
+		Version: 4,
+		Name:    "add_incidents",
+		SQL: `
+CREATE TABLE IF NOT EXISTS incidents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'investigating' CHECK(status IN ('investigating', 'identified', 'monitoring', 'resolved')),
+    severity TEXT NOT NULL DEFAULT 'minor' CHECK(severity IN ('minor', 'major', 'critical')),
+    system_ids TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    postmortem TEXT NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME,
+    acknowledged_at DATETIME,
+    acknowledged_by TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS incident_updates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_id INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
+CREATE INDEX IF NOT EXISTS idx_incidents_created_at ON incidents(created_at);
+CREATE INDEX IF NOT EXISTS idx_incident_updates_incident_id ON incident_updates(incident_id);
+`,
+	},
 }
 
 // New creates a new SQLite database connection

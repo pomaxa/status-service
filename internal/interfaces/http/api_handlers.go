@@ -681,3 +681,354 @@ func toMaintenanceResponse(m *domain.Maintenance) maintenanceResponse {
 		UpdatedAt:   m.UpdatedAt.Format(time.RFC3339),
 	}
 }
+
+// Incident handlers
+
+type incidentRequest struct {
+	Title     string  `json:"title"`
+	Message   string  `json:"message"`
+	Severity  string  `json:"severity"`
+	SystemIDs []int64 `json:"system_ids"`
+}
+
+type incidentStatusRequest struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	By      string `json:"by"`
+}
+
+type incidentResolveRequest struct {
+	Postmortem string `json:"postmortem"`
+	By         string `json:"by"`
+}
+
+type incidentAckRequest struct {
+	By string `json:"by"`
+}
+
+type incidentUpdateRequest struct {
+	Message string `json:"message"`
+	By      string `json:"by"`
+}
+
+type incidentResponse struct {
+	ID             int64   `json:"id"`
+	Title          string  `json:"title"`
+	Status         string  `json:"status"`
+	Severity       string  `json:"severity"`
+	SystemIDs      []int64 `json:"system_ids,omitempty"`
+	Message        string  `json:"message"`
+	Postmortem     string  `json:"postmortem,omitempty"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+	ResolvedAt     *string `json:"resolved_at,omitempty"`
+	AcknowledgedAt *string `json:"acknowledged_at,omitempty"`
+	AcknowledgedBy string  `json:"acknowledged_by,omitempty"`
+	Duration       string  `json:"duration"`
+}
+
+type incidentUpdateResponse struct {
+	ID         int64  `json:"id"`
+	IncidentID int64  `json:"incident_id"`
+	Status     string `json:"status"`
+	Message    string `json:"message"`
+	CreatedAt  string `json:"created_at"`
+	CreatedBy  string `json:"created_by"`
+}
+
+func (s *Server) apiGetIncidents(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	incidents, err := s.incidentService.GetAllIncidents(r.Context(), limit)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := make([]incidentResponse, len(incidents))
+	for i, inc := range incidents {
+		response[i] = toIncidentResponse(inc)
+	}
+
+	s.respondJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) apiGetActiveIncidents(w http.ResponseWriter, r *http.Request) {
+	incidents, err := s.incidentService.GetActiveIncidents(r.Context())
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := make([]incidentResponse, len(incidents))
+	for i, inc := range incidents {
+		response[i] = toIncidentResponse(inc)
+	}
+
+	s.respondJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) apiGetRecentIncidents(w http.ResponseWriter, r *http.Request) {
+	days := 7
+	if d := r.URL.Query().Get("days"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 {
+			days = parsed
+		}
+	}
+
+	incidents, err := s.incidentService.GetRecentIncidents(r.Context(), days)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := make([]incidentResponse, len(incidents))
+	for i, inc := range incidents {
+		response[i] = toIncidentResponse(inc)
+	}
+
+	s.respondJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) apiCreateIncident(w http.ResponseWriter, r *http.Request) {
+	var req incidentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	severity := domain.IncidentSeverity(req.Severity)
+	if severity == "" {
+		severity = domain.SeverityMinor
+	}
+
+	incident, err := s.incidentService.CreateIncident(r.Context(), req.Title, req.Message, severity, req.SystemIDs)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusCreated, toIncidentResponse(incident))
+}
+
+func (s *Server) apiGetIncident(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid incident ID")
+		return
+	}
+
+	incident, err := s.incidentService.GetIncident(r.Context(), id)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if incident == nil {
+		s.respondError(w, http.StatusNotFound, "incident not found")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, toIncidentResponse(incident))
+}
+
+func (s *Server) apiDeleteIncident(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid incident ID")
+		return
+	}
+
+	if err := s.incidentService.DeleteIncident(r.Context(), id); err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) apiAcknowledgeIncident(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid incident ID")
+		return
+	}
+
+	var req incidentAckRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	if req.By == "" {
+		req.By = "unknown"
+	}
+
+	incident, err := s.incidentService.AcknowledgeIncident(r.Context(), id, req.By)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, toIncidentResponse(incident))
+}
+
+func (s *Server) apiUpdateIncidentStatus(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid incident ID")
+		return
+	}
+
+	var req incidentStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	status := domain.IncidentStatus(req.Status)
+	if req.By == "" {
+		req.By = "unknown"
+	}
+
+	incident, err := s.incidentService.UpdateIncidentStatus(r.Context(), id, status, req.Message, req.By)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, toIncidentResponse(incident))
+}
+
+func (s *Server) apiResolveIncident(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid incident ID")
+		return
+	}
+
+	var req incidentResolveRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	if req.By == "" {
+		req.By = "unknown"
+	}
+
+	incident, err := s.incidentService.ResolveIncident(r.Context(), id, req.Postmortem, req.By)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, toIncidentResponse(incident))
+}
+
+func (s *Server) apiGetIncidentUpdates(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid incident ID")
+		return
+	}
+
+	updates, err := s.incidentService.GetIncidentUpdates(r.Context(), id)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := make([]incidentUpdateResponse, len(updates))
+	for i, u := range updates {
+		response[i] = incidentUpdateResponse{
+			ID:         u.ID,
+			IncidentID: u.IncidentID,
+			Status:     string(u.Status),
+			Message:    u.Message,
+			CreatedAt:  u.CreatedAt.Format(time.RFC3339),
+			CreatedBy:  u.CreatedBy,
+		}
+	}
+
+	s.respondJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) apiAddIncidentUpdate(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid incident ID")
+		return
+	}
+
+	var req incidentUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.By == "" {
+		req.By = "unknown"
+	}
+
+	update, err := s.incidentService.AddIncidentUpdate(r.Context(), id, req.Message, req.By)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusCreated, incidentUpdateResponse{
+		ID:         update.ID,
+		IncidentID: update.IncidentID,
+		Status:     string(update.Status),
+		Message:    update.Message,
+		CreatedAt:  update.CreatedAt.Format(time.RFC3339),
+		CreatedBy:  update.CreatedBy,
+	})
+}
+
+func toIncidentResponse(i *domain.Incident) incidentResponse {
+	resp := incidentResponse{
+		ID:             i.ID,
+		Title:          i.Title,
+		Status:         string(i.Status),
+		Severity:       string(i.Severity),
+		SystemIDs:      i.SystemIDs,
+		Message:        i.Message,
+		Postmortem:     i.Postmortem,
+		CreatedAt:      i.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:      i.UpdatedAt.Format(time.RFC3339),
+		AcknowledgedBy: i.AcknowledgedBy,
+		Duration:       formatDuration(i.Duration()),
+	}
+
+	if i.ResolvedAt != nil {
+		t := i.ResolvedAt.Format(time.RFC3339)
+		resp.ResolvedAt = &t
+	}
+	if i.AcknowledgedAt != nil {
+		t := i.AcknowledgedAt.Format(time.RFC3339)
+		resp.AcknowledgedAt = &t
+	}
+
+	return resp
+}
+
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return "< 1m"
+	}
+	if d < time.Hour {
+		return strconv.Itoa(int(d.Minutes())) + "m"
+	}
+	if d < 24*time.Hour {
+		h := int(d.Hours())
+		m := int(d.Minutes()) % 60
+		if m > 0 {
+			return strconv.Itoa(h) + "h " + strconv.Itoa(m) + "m"
+		}
+		return strconv.Itoa(h) + "h"
+	}
+	days := int(d.Hours() / 24)
+	hours := int(d.Hours()) % 24
+	if hours > 0 {
+		return strconv.Itoa(days) + "d " + strconv.Itoa(hours) + "h"
+	}
+	return strconv.Itoa(days) + "d"
+}

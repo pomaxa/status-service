@@ -70,11 +70,11 @@ type StatusLogRepository interface {
 
 // AnalyticsRepository defines operations for analytics queries
 type AnalyticsRepository interface {
-	// GetIncidentsBySystemID calculates incidents for a system within time range
-	GetIncidentsBySystemID(ctx context.Context, systemID int64, start, end time.Time) ([]Incident, error)
+	// GetIncidentsBySystemID calculates incident periods for a system within time range
+	GetIncidentsBySystemID(ctx context.Context, systemID int64, start, end time.Time) ([]IncidentPeriod, error)
 
-	// GetIncidentsByDependencyID calculates incidents for a dependency within time range
-	GetIncidentsByDependencyID(ctx context.Context, dependencyID int64, start, end time.Time) ([]Incident, error)
+	// GetIncidentsByDependencyID calculates incident periods for a dependency within time range
+	GetIncidentsByDependencyID(ctx context.Context, dependencyID int64, start, end time.Time) ([]IncidentPeriod, error)
 
 	// GetUptimeBySystemID calculates uptime metrics for a system
 	GetUptimeBySystemID(ctx context.Context, systemID int64, start, end time.Time) (*Analytics, error)
@@ -138,4 +138,34 @@ type MaintenanceRepository interface {
 
 	// Delete removes a maintenance window by ID
 	Delete(ctx context.Context, id int64) error
+}
+
+// IncidentRepository defines operations for Incident persistence
+type IncidentRepository interface {
+	// Create persists a new incident and sets its ID
+	Create(ctx context.Context, incident *Incident) error
+
+	// GetByID retrieves an incident by ID
+	GetByID(ctx context.Context, id int64) (*Incident, error)
+
+	// GetAll retrieves all incidents with optional limit
+	GetAll(ctx context.Context, limit int) ([]*Incident, error)
+
+	// GetActive retrieves all unresolved incidents
+	GetActive(ctx context.Context) ([]*Incident, error)
+
+	// GetRecent retrieves recent incidents (resolved in last N days)
+	GetRecent(ctx context.Context, days int) ([]*Incident, error)
+
+	// Update saves changes to an existing incident
+	Update(ctx context.Context, incident *Incident) error
+
+	// Delete removes an incident by ID
+	Delete(ctx context.Context, id int64) error
+
+	// CreateUpdate adds a timeline entry to an incident
+	CreateUpdate(ctx context.Context, update *IncidentUpdate) error
+
+	// GetUpdates retrieves all updates for an incident
+	GetUpdates(ctx context.Context, incidentID int64) ([]*IncidentUpdate, error)
 }

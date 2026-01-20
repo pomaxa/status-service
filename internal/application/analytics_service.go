@@ -57,8 +57,8 @@ func (s *AnalyticsService) GetOverallAnalytics(ctx context.Context, period strin
 	return analytics, nil
 }
 
-// GetSystemIncidents retrieves incidents for a system
-func (s *AnalyticsService) GetSystemIncidents(ctx context.Context, systemID int64, period string) ([]domain.Incident, error) {
+// GetSystemIncidents retrieves incident periods for a system
+func (s *AnalyticsService) GetSystemIncidents(ctx context.Context, systemID int64, period string) ([]domain.IncidentPeriod, error) {
 	start, end := s.parsePeriod(period)
 
 	incidents, err := s.analyticsRepo.GetIncidentsBySystemID(ctx, systemID, start, end)
@@ -69,8 +69,8 @@ func (s *AnalyticsService) GetSystemIncidents(ctx context.Context, systemID int6
 	return incidents, nil
 }
 
-// GetDependencyIncidents retrieves incidents for a dependency
-func (s *AnalyticsService) GetDependencyIncidents(ctx context.Context, dependencyID int64, period string) ([]domain.Incident, error) {
+// GetDependencyIncidents retrieves incident periods for a dependency
+func (s *AnalyticsService) GetDependencyIncidents(ctx context.Context, dependencyID int64, period string) ([]domain.IncidentPeriod, error) {
 	start, end := s.parsePeriod(period)
 
 	incidents, err := s.analyticsRepo.GetIncidentsByDependencyID(ctx, dependencyID, start, end)

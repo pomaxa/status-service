@@ -48,11 +48,12 @@ type analyticsPageData struct {
 }
 
 type publicStatusData struct {
-	Title              string
-	Systems            []*systemWithDeps
-	ActiveMaintenance  []*maintenanceInfo
+	Title               string
+	Systems             []*systemWithDeps
+	ActiveMaintenance   []*maintenanceInfo
 	UpcomingMaintenance []*maintenanceInfo
-	UpdatedAt          string
+	ActiveIncidents     []*incidentInfo
+	UpdatedAt           string
 }
 
 type maintenanceInfo struct {
@@ -62,6 +63,16 @@ type maintenanceInfo struct {
 	StartTime   string
 	EndTime     string
 	Status      string
+}
+
+type incidentInfo struct {
+	ID        int64
+	Title     string
+	Status    string
+	Severity  string
+	Message   string
+	CreatedAt string
+	UpdatedAt string
 }
 
 func (s *Server) getTemplateFuncs() template.FuncMap {
@@ -477,6 +488,23 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Get active incidents
+	var activeIncidents []*incidentInfo
+	if s.incidentService != nil {
+		incidents, _ := s.incidentService.GetActiveIncidents(r.Context())
+		for _, inc := range incidents {
+			activeIncidents = append(activeIncidents, &incidentInfo{
+				ID:        inc.ID,
+				Title:     inc.Title,
+				Status:    string(inc.Status),
+				Severity:  string(inc.Severity),
+				Message:   inc.Message,
+				CreatedAt: inc.CreatedAt.Format("Jan 2, 15:04"),
+				UpdatedAt: inc.UpdatedAt.Format("Jan 2, 15:04"),
+			})
+		}
+	}
+
 	tmpl, err := s.loadStandaloneTemplate("public")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -489,6 +517,7 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 		Systems:             systemsWithDeps,
 		ActiveMaintenance:   activeMaintenance,
 		UpcomingMaintenance: upcomingMaintenance,
+		ActiveIncidents:     activeIncidents,
 		UpdatedAt:           formatTimeAgo(),
 	})
 }
