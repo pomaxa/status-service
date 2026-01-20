@@ -47,8 +47,14 @@ type analyticsPageData struct {
 	Systems  []*systemWithDeps
 }
 
-func (s *Server) loadTemplate(name string) (*template.Template, error) {
-	funcs := template.FuncMap{
+type publicStatusData struct {
+	Title     string
+	Systems   []*systemWithDeps
+	UpdatedAt string
+}
+
+func (s *Server) getTemplateFuncs() template.FuncMap {
+	return template.FuncMap{
 		"statusClass": func(status domain.Status) string {
 			switch status {
 			case domain.StatusGreen:
@@ -71,6 +77,76 @@ func (s *Server) loadTemplate(name string) (*template.Template, error) {
 			}
 			return ""
 		},
+		"statusText": func(status domain.Status) string {
+			switch status {
+			case domain.StatusGreen:
+				return "Operational"
+			case domain.StatusYellow:
+				return "Degraded"
+			case domain.StatusRed:
+				return "Outage"
+			}
+			return "Unknown"
+		},
+		"statusTextClass": func(status domain.Status) string {
+			switch status {
+			case domain.StatusGreen:
+				return "operational"
+			case domain.StatusYellow:
+				return "degraded"
+			case domain.StatusRed:
+				return "outage"
+			}
+			return ""
+		},
+		"overallStatusClass": func(systems []*systemWithDeps) string {
+			worst := domain.StatusGreen
+			for _, sys := range systems {
+				if sys.Status == domain.StatusRed {
+					return "status-red"
+				}
+				if sys.Status == domain.StatusYellow && worst != domain.StatusRed {
+					worst = domain.StatusYellow
+				}
+				for _, dep := range sys.Dependencies {
+					if dep.Status == domain.StatusRed {
+						return "status-red"
+					}
+					if dep.Status == domain.StatusYellow && worst != domain.StatusRed {
+						worst = domain.StatusYellow
+					}
+				}
+			}
+			switch worst {
+			case domain.StatusYellow:
+				return "status-yellow"
+			default:
+				return "status-green"
+			}
+		},
+		"overallStatusText": func(systems []*systemWithDeps) string {
+			for _, sys := range systems {
+				if sys.Status == domain.StatusRed {
+					return "Major Outage"
+				}
+				for _, dep := range sys.Dependencies {
+					if dep.Status == domain.StatusRed {
+						return "Partial Outage"
+					}
+				}
+			}
+			for _, sys := range systems {
+				if sys.Status == domain.StatusYellow {
+					return "Degraded Performance"
+				}
+				for _, dep := range sys.Dependencies {
+					if dep.Status == domain.StatusYellow {
+						return "Degraded Performance"
+					}
+				}
+			}
+			return "All Systems Operational"
+		},
 		"formatDuration": func(d interface{}) string {
 			switch v := d.(type) {
 			case int64:
@@ -83,11 +159,18 @@ func (s *Server) loadTemplate(name string) (*template.Template, error) {
 			return formatPercent(p)
 		},
 	}
+}
 
+func (s *Server) loadTemplate(name string) (*template.Template, error) {
 	layoutPath := filepath.Join(s.templateDir, "layout.html")
 	tmplPath := filepath.Join(s.templateDir, name+".html")
 
-	return template.New("layout.html").Funcs(funcs).ParseFiles(layoutPath, tmplPath)
+	return template.New("layout.html").Funcs(s.getTemplateFuncs()).ParseFiles(layoutPath, tmplPath)
+}
+
+func (s *Server) loadStandaloneTemplate(name string) (*template.Template, error) {
+	tmplPath := filepath.Join(s.templateDir, name+".html")
+	return template.New(name + ".html").Funcs(s.getTemplateFuncs()).ParseFiles(tmplPath)
 }
 
 func formatDurationNs(ns int64) string {
@@ -335,4 +418,38 @@ func parseIDFromChi(r *http.Request, param string) (int64, error) {
 		id = id*10 + int64(c-'0')
 	}
 	return id, nil
+}
+
+func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
+	systems, err := s.systemService.GetAllSystems(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var systemsWithDeps []*systemWithDeps
+	for _, sys := range systems {
+		deps, _ := s.depService.GetDependenciesBySystem(r.Context(), sys.ID)
+		systemsWithDeps = append(systemsWithDeps, &systemWithDeps{
+			System:       sys,
+			Dependencies: deps,
+		})
+	}
+
+	tmpl, err := s.loadStandaloneTemplate("public")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	tmpl.Execute(w, publicStatusData{
+		Title:     "System Status",
+		Systems:   systemsWithDeps,
+		UpdatedAt: formatTimeAgo(),
+	})
+}
+
+func formatTimeAgo() string {
+	return "just now"
 }

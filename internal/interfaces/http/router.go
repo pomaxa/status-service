@@ -58,7 +58,10 @@ func (s *Server) setupRoutes() {
 		httpSwagger.URL("/swagger/doc.json"),
 	))
 
-	// Web UI routes
+	// Public status page (no admin navigation)
+	s.router.Get("/status", s.handlePublicStatus)
+
+	// Web UI routes (admin)
 	s.router.Get("/", s.handleDashboard)
 	s.router.Get("/systems/{id}", s.handleSystemDetail)
 	s.router.Get("/admin", s.handleAdmin)

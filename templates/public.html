@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .Title}}{{.Title}}{{else}}System Status{{end}}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body {
+            background: #f8fafc;
+        }
+        .public-header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+        .public-header h1 {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .public-header .subtitle {
+            color: rgba(255,255,255,0.7);
+            font-size: 1rem;
+        }
+        .overall-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: rgba(255,255,255,0.1);
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            margin-top: 1.5rem;
+        }
+        .overall-status .status-dot {
+            width: 14px;
+            height: 14px;
+        }
+        .overall-status .status-text {
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+        .public-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .status-section {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+        .section-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .section-header h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 0;
+            flex: 1;
+        }
+        .section-header .status-badge {
+            font-size: 0.75rem;
+        }
+        .component-list {
+            list-style: none;
+        }
+        .component-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .component-item:last-child {
+            border-bottom: none;
+        }
+        .component-item .status-dot {
+            margin-right: 1rem;
+        }
+        .component-name {
+            flex: 1;
+            font-weight: 500;
+        }
+        .component-status {
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+        .component-status.operational {
+            color: #059669;
+        }
+        .component-status.degraded {
+            color: #d97706;
+        }
+        .component-status.outage {
+            color: #dc2626;
+        }
+        .last-updated {
+            text-align: center;
+            color: #9ca3af;
+            font-size: 0.85rem;
+            margin-top: 2rem;
+        }
+        .public-footer {
+            text-align: center;
+            padding: 2rem;
+            color: #9ca3af;
+            font-size: 0.85rem;
+        }
+        .public-footer a {
+            color: #6b7280;
+        }
+        .no-systems {
+            text-align: center;
+            padding: 3rem;
+            color: #6b7280;
+        }
+        @media (max-width: 600px) {
+            .public-header {
+                padding: 2rem 1rem;
+            }
+            .public-header h1 {
+                font-size: 1.5rem;
+            }
+            .public-container {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="public-header">
+        <h1>{{if .Title}}{{.Title}}{{else}}System Status{{end}}</h1>
+        <p class="subtitle">Real-time status of our services</p>
+        <div class="overall-status">
+            <span class="status-dot {{overallStatusClass .Systems}}"></span>
+            <span class="status-text">{{overallStatusText .Systems}}</span>
+        </div>
+    </header>
+
+    <div class="public-container">
+        {{if .Systems}}
+            {{range .Systems}}
+            <section class="status-section">
+                <div class="section-header">
+                    <span class="status-dot {{statusClass .Status}}"></span>
+                    <h2>{{.Name}}</h2>
+                    <span class="status-badge {{statusClass .Status}}">{{statusText .Status}}</span>
+                </div>
+                {{if .Dependencies}}
+                <ul class="component-list">
+                    {{range .Dependencies}}
+                    <li class="component-item">
+                        <span class="status-dot {{statusClass .Status}}"></span>
+                        <span class="component-name">{{.Name}}</span>
+                        <span class="component-status {{statusTextClass .Status}}">{{statusText .Status}}</span>
+                    </li>
+                    {{end}}
+                </ul>
+                {{end}}
+            </section>
+            {{end}}
+        {{else}}
+            <div class="no-systems">
+                <p>No systems configured yet.</p>
+            </div>
+        {{end}}
+
+        <p class="last-updated">Last updated: {{.UpdatedAt}}</p>
+    </div>
+
+    <footer class="public-footer">
+        Powered by <a href="https://github.com/pmpavl/status-incident" target="_blank">Status Incident</a>
+    </footer>
+
+    <script>
+        // Auto-refresh every 60 seconds
+        setTimeout(() => location.reload(), 60000);
+    </script>
+</body>
+</html>
