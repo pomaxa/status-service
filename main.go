@@ -71,6 +71,7 @@ func main() {
 	logRepo := sqlite.NewLogRepo(db)
 	analyticsRepo := sqlite.NewAnalyticsRepo(db)
 	webhookRepo := sqlite.NewWebhookRepo(db)
+	maintenanceRepo := sqlite.NewMaintenanceRepo(db)
 
 	// Initialize health checker
 	checker := http_checker.New(10 * time.Second)
@@ -80,6 +81,7 @@ func main() {
 	depService := application.NewDependencyService(depRepo, logRepo)
 	heartbeatService := application.NewHeartbeatService(depRepo, logRepo, checker)
 	analyticsService := application.NewAnalyticsService(analyticsRepo, logRepo)
+	maintenanceService := application.NewMaintenanceService(maintenanceRepo)
 	notificationService := application.NewNotificationService(webhookRepo, systemRepo, depRepo)
 
 	// Set notification service on other services
@@ -96,6 +98,7 @@ func main() {
 		depService,
 		heartbeatService,
 		analyticsService,
+		maintenanceService,
 		webhookHandlers,
 		*templateDir,
 	)

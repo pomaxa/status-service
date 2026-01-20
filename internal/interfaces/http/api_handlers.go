@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"status-incident/internal/domain"
 )
 
 // Request/Response types
@@ -483,4 +486,198 @@ func (s *Server) apiGetOverallAnalytics(w http.ResponseWriter, r *http.Request) 
 	}
 
 	s.respondJSON(w, http.StatusOK, analytics)
+}
+
+// Maintenance handlers
+
+type maintenanceRequest struct {
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	StartTime   string  `json:"start_time"`
+	EndTime     string  `json:"end_time"`
+	SystemIDs   []int64 `json:"system_ids"`
+}
+
+type maintenanceResponse struct {
+	ID          int64   `json:"id"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	StartTime   string  `json:"start_time"`
+	EndTime     string  `json:"end_time"`
+	SystemIDs   []int64 `json:"system_ids,omitempty"`
+	Status      string  `json:"status"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
+}
+
+func (s *Server) apiGetMaintenances(w http.ResponseWriter, r *http.Request) {
+	maintenances, err := s.maintenanceService.GetAllMaintenances(r.Context())
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := make([]maintenanceResponse, len(maintenances))
+	for i, m := range maintenances {
+		response[i] = toMaintenanceResponse(m)
+	}
+
+	s.respondJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) apiGetActiveMaintenances(w http.ResponseWriter, r *http.Request) {
+	maintenances, err := s.maintenanceService.GetActiveMaintenances(r.Context())
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := make([]maintenanceResponse, len(maintenances))
+	for i, m := range maintenances {
+		response[i] = toMaintenanceResponse(m)
+	}
+
+	s.respondJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) apiGetUpcomingMaintenances(w http.ResponseWriter, r *http.Request) {
+	maintenances, err := s.maintenanceService.GetUpcomingMaintenances(r.Context())
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := make([]maintenanceResponse, len(maintenances))
+	for i, m := range maintenances {
+		response[i] = toMaintenanceResponse(m)
+	}
+
+	s.respondJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) apiCreateMaintenance(w http.ResponseWriter, r *http.Request) {
+	var req maintenanceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	startTime, err := time.Parse(time.RFC3339, req.StartTime)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid start_time format (use RFC3339)")
+		return
+	}
+
+	endTime, err := time.Parse(time.RFC3339, req.EndTime)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid end_time format (use RFC3339)")
+		return
+	}
+
+	m, err := s.maintenanceService.CreateMaintenance(r.Context(), req.Title, req.Description, startTime, endTime, req.SystemIDs)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusCreated, toMaintenanceResponse(m))
+}
+
+func (s *Server) apiGetMaintenance(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid maintenance ID")
+		return
+	}
+
+	m, err := s.maintenanceService.GetMaintenance(r.Context(), id)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if m == nil {
+		s.respondError(w, http.StatusNotFound, "maintenance not found")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, toMaintenanceResponse(m))
+}
+
+func (s *Server) apiUpdateMaintenance(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid maintenance ID")
+		return
+	}
+
+	var req maintenanceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	startTime, err := time.Parse(time.RFC3339, req.StartTime)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid start_time format (use RFC3339)")
+		return
+	}
+
+	endTime, err := time.Parse(time.RFC3339, req.EndTime)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid end_time format (use RFC3339)")
+		return
+	}
+
+	m, err := s.maintenanceService.UpdateMaintenance(r.Context(), id, req.Title, req.Description, startTime, endTime, req.SystemIDs)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, toMaintenanceResponse(m))
+}
+
+func (s *Server) apiDeleteMaintenance(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid maintenance ID")
+		return
+	}
+
+	if err := s.maintenanceService.DeleteMaintenance(r.Context(), id); err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) apiCancelMaintenance(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid maintenance ID")
+		return
+	}
+
+	m, err := s.maintenanceService.CancelMaintenance(r.Context(), id)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, toMaintenanceResponse(m))
+}
+
+func toMaintenanceResponse(m *domain.Maintenance) maintenanceResponse {
+	return maintenanceResponse{
+		ID:          m.ID,
+		Title:       m.Title,
+		Description: m.Description,
+		StartTime:   m.StartTime.Format(time.RFC3339),
+		EndTime:     m.EndTime.Format(time.RFC3339),
+		SystemIDs:   m.SystemIDs,
+		Status:      string(m.Status),
+		CreatedAt:   m.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   m.UpdatedAt.Format(time.RFC3339),
+	}
 }

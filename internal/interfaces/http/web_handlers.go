@@ -48,9 +48,20 @@ type analyticsPageData struct {
 }
 
 type publicStatusData struct {
-	Title     string
-	Systems   []*systemWithDeps
-	UpdatedAt string
+	Title              string
+	Systems            []*systemWithDeps
+	ActiveMaintenance  []*maintenanceInfo
+	UpcomingMaintenance []*maintenanceInfo
+	UpdatedAt          string
+}
+
+type maintenanceInfo struct {
+	ID          int64
+	Title       string
+	Description string
+	StartTime   string
+	EndTime     string
+	Status      string
 }
 
 func (s *Server) getTemplateFuncs() template.FuncMap {
@@ -436,6 +447,36 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Get maintenance info
+	var activeMaintenance []*maintenanceInfo
+	var upcomingMaintenance []*maintenanceInfo
+
+	if s.maintenanceService != nil {
+		actives, _ := s.maintenanceService.GetActiveMaintenances(r.Context())
+		for _, m := range actives {
+			activeMaintenance = append(activeMaintenance, &maintenanceInfo{
+				ID:          m.ID,
+				Title:       m.Title,
+				Description: m.Description,
+				StartTime:   m.StartTime.Format("Jan 2, 15:04"),
+				EndTime:     m.EndTime.Format("Jan 2, 15:04"),
+				Status:      string(m.Status),
+			})
+		}
+
+		upcoming, _ := s.maintenanceService.GetUpcomingMaintenances(r.Context())
+		for _, m := range upcoming {
+			upcomingMaintenance = append(upcomingMaintenance, &maintenanceInfo{
+				ID:          m.ID,
+				Title:       m.Title,
+				Description: m.Description,
+				StartTime:   m.StartTime.Format("Jan 2, 15:04"),
+				EndTime:     m.EndTime.Format("Jan 2, 15:04"),
+				Status:      string(m.Status),
+			})
+		}
+	}
+
 	tmpl, err := s.loadStandaloneTemplate("public")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -444,9 +485,11 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	tmpl.Execute(w, publicStatusData{
-		Title:     "System Status",
-		Systems:   systemsWithDeps,
-		UpdatedAt: formatTimeAgo(),
+		Title:               "System Status",
+		Systems:             systemsWithDeps,
+		ActiveMaintenance:   activeMaintenance,
+		UpcomingMaintenance: upcomingMaintenance,
+		UpdatedAt:           formatTimeAgo(),
 	})
 }
 

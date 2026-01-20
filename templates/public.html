@@ -121,6 +121,47 @@
             padding: 3rem;
             color: #6b7280;
         }
+        .maintenance-banner {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .maintenance-banner.active {
+            background: #fee2e2;
+            border-color: #ef4444;
+        }
+        .maintenance-banner h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin: 0 0 0.5rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .maintenance-banner.active h3 {
+            color: #991b1b;
+        }
+        .maintenance-banner h3::before {
+            content: "🔧";
+        }
+        .maintenance-banner.active h3::before {
+            content: "⚠️";
+        }
+        .maintenance-banner p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+        .maintenance-banner .maintenance-time {
+            font-size: 0.85rem;
+            color: #92400e;
+            margin-top: 0.5rem;
+        }
+        .maintenance-banner.active .maintenance-time {
+            color: #991b1b;
+        }
         @media (max-width: 600px) {
             .public-header {
                 padding: 2rem 1rem;
@@ -145,6 +186,26 @@
     </header>
 
     <div class="public-container">
+        {{if .ActiveMaintenance}}
+            {{range .ActiveMaintenance}}
+            <div class="maintenance-banner active">
+                <h3>Ongoing Maintenance: {{.Title}}</h3>
+                {{if .Description}}<p>{{.Description}}</p>{{end}}
+                <p class="maintenance-time">Started: {{.StartTime}} - Expected end: {{.EndTime}}</p>
+            </div>
+            {{end}}
+        {{end}}
+
+        {{if .UpcomingMaintenance}}
+            {{range .UpcomingMaintenance}}
+            <div class="maintenance-banner">
+                <h3>Scheduled Maintenance: {{.Title}}</h3>
+                {{if .Description}}<p>{{.Description}}</p>{{end}}
+                <p class="maintenance-time">{{.StartTime}} - {{.EndTime}}</p>
+            </div>
+            {{end}}
+        {{end}}
+
         {{if .Systems}}
             {{range .Systems}}
             <section class="status-section">

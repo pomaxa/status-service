@@ -11,13 +11,14 @@ import (
 
 // Server represents the HTTP server
 type Server struct {
-	router           *chi.Mux
-	systemService    *application.SystemService
-	depService       *application.DependencyService
-	heartbeatService *application.HeartbeatService
-	analyticsService *application.AnalyticsService
-	webhookHandlers  *WebhookHandlers
-	templateDir      string
+	router             *chi.Mux
+	systemService      *application.SystemService
+	depService         *application.DependencyService
+	heartbeatService   *application.HeartbeatService
+	analyticsService   *application.AnalyticsService
+	maintenanceService *application.MaintenanceService
+	webhookHandlers    *WebhookHandlers
+	templateDir        string
 }
 
 // NewServer creates a new HTTP server
@@ -26,17 +27,19 @@ func NewServer(
 	depService *application.DependencyService,
 	heartbeatService *application.HeartbeatService,
 	analyticsService *application.AnalyticsService,
+	maintenanceService *application.MaintenanceService,
 	webhookHandlers *WebhookHandlers,
 	templateDir string,
 ) *Server {
 	s := &Server{
-		router:           chi.NewRouter(),
-		systemService:    systemService,
-		depService:       depService,
-		heartbeatService: heartbeatService,
-		analyticsService: analyticsService,
-		webhookHandlers:  webhookHandlers,
-		templateDir:      templateDir,
+		router:             chi.NewRouter(),
+		systemService:      systemService,
+		depService:         depService,
+		heartbeatService:   heartbeatService,
+		analyticsService:   analyticsService,
+		maintenanceService: maintenanceService,
+		webhookHandlers:    webhookHandlers,
+		templateDir:        templateDir,
 	}
 
 	s.setupRoutes()
@@ -116,6 +119,16 @@ func (s *Server) setupRoutes() {
 		r.Put("/webhooks/{id}", s.webhookHandlers.UpdateWebhook)
 		r.Delete("/webhooks/{id}", s.webhookHandlers.DeleteWebhook)
 		r.Post("/webhooks/{id}/test", s.webhookHandlers.TestWebhook)
+
+		// Maintenance windows
+		r.Get("/maintenances", s.apiGetMaintenances)
+		r.Post("/maintenances", s.apiCreateMaintenance)
+		r.Get("/maintenances/active", s.apiGetActiveMaintenances)
+		r.Get("/maintenances/upcoming", s.apiGetUpcomingMaintenances)
+		r.Get("/maintenances/{id}", s.apiGetMaintenance)
+		r.Put("/maintenances/{id}", s.apiUpdateMaintenance)
+		r.Delete("/maintenances/{id}", s.apiDeleteMaintenance)
+		r.Post("/maintenances/{id}/cancel", s.apiCancelMaintenance)
 	})
 }
 

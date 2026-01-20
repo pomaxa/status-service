@@ -112,3 +112,30 @@ type WebhookRepository interface {
 	// Delete removes a webhook by ID
 	Delete(ctx context.Context, id int64) error
 }
+
+// MaintenanceRepository defines operations for Maintenance persistence
+type MaintenanceRepository interface {
+	// Create persists a new maintenance window and sets its ID
+	Create(ctx context.Context, m *Maintenance) error
+
+	// GetByID retrieves a maintenance window by ID
+	GetByID(ctx context.Context, id int64) (*Maintenance, error)
+
+	// GetAll retrieves all maintenance windows
+	GetAll(ctx context.Context) ([]*Maintenance, error)
+
+	// GetActive retrieves currently active maintenance windows
+	GetActive(ctx context.Context) ([]*Maintenance, error)
+
+	// GetUpcoming retrieves scheduled maintenance windows
+	GetUpcoming(ctx context.Context) ([]*Maintenance, error)
+
+	// GetByTimeRange retrieves maintenance windows overlapping with time range
+	GetByTimeRange(ctx context.Context, start, end time.Time) ([]*Maintenance, error)
+
+	// Update saves changes to an existing maintenance window
+	Update(ctx context.Context, m *Maintenance) error
+
+	// Delete removes a maintenance window by ID
+	Delete(ctx context.Context, id int64) error
+}

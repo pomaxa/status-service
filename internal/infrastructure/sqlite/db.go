@@ -97,6 +97,27 @@ CREATE TABLE IF NOT EXISTS webhooks (
 CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled);
 `,
 	},
+	{
+		Version: 3,
+		Name:    "add_maintenances",
+		SQL: `
+CREATE TABLE IF NOT EXISTS maintenances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    start_time DATETIME NOT NULL,
+    end_time DATETIME NOT NULL,
+    system_ids TEXT,
+    status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled', 'in_progress', 'completed', 'cancelled')),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_maintenances_status ON maintenances(status);
+CREATE INDEX IF NOT EXISTS idx_maintenances_start_time ON maintenances(start_time);
+CREATE INDEX IF NOT EXISTS idx_maintenances_end_time ON maintenances(end_time);
+`,
+	},
 }
 
 // New creates a new SQLite database connection
