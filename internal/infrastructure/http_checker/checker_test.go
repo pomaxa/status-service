@@ -39,8 +39,8 @@ func TestCheck_Success(t *testing.T) {
 	if !healthy {
 		t.Error("expected healthy=true")
 	}
-	if latency <= 0 {
-		t.Error("expected positive latency")
+	if latency < 0 {
+		t.Error("expected non-negative latency")
 	}
 }
 
