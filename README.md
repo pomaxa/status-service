@@ -12,9 +12,9 @@ Internal service for monitoring system status and tracking incidents.
 ## Screenshots
 
 ### Dashboard
-Overview of all systems with real-time status indicators, uptime metrics, and incident counts.
+Overview of all systems with real-time status indicators, uptime metrics, and component health.
 
-![Dashboard](screenshots/01-homepage.png)
+![Dashboard](screenshots/01-dashboard.png)
 
 ### Administration
 System management interface with backup/restore, webhook configuration, and system creation.
@@ -26,30 +26,30 @@ Read-only public page for external stakeholders to view system status.
 
 ![Public](screenshots/03-public.png)
 
-### Incident Management
-Track and manage incidents with status updates, severity levels, and resolution workflow.
+### System Details
+Detailed view of a system with status controls, analytics, and dependency management.
 
-![Incidents](screenshots/04-incidents.png)
-
-### Maintenance Windows
-Schedule planned maintenance to exclude from SLA calculations.
-
-![Maintenance](screenshots/05-maintenance.png)
+![System](screenshots/04-system.png)
 
 ### SLA Reports
-Generate and view SLA compliance reports with breach tracking.
+Generate and view SLA compliance reports with target tracking.
 
-![SLA Reports](screenshots/06-sla.png)
+![SLA Reports](screenshots/05-sla.png)
 
-### API Documentation
-Interactive Swagger documentation for the REST API.
+### Analytics
+Overall performance metrics, per-system analytics, and SLA reference table.
 
-![API Docs](screenshots/07-api-docs.png)
+![Analytics](screenshots/06-analytics.png)
 
 ### Activity Log
 Complete history of all status changes with timestamps and source tracking.
 
-![History](screenshots/08-history.png)
+![Logs](screenshots/07-logs.png)
+
+### API Documentation
+Interactive Swagger documentation for the REST API.
+
+![API Docs](screenshots/08-api-docs.png)
 
 ## Features
 
@@ -130,14 +130,13 @@ Swagger UI is available at http://localhost:8080/swagger/
 |------|-----|-------------|
 | Dashboard | `/` | Overview of all systems |
 | System | `/systems/{id}` | System details and dependencies |
-| Public | `/public` | Public status page (read-only) |
-| Incidents | `/incidents` | Incident management |
-| Maintenance | `/maintenance` | Scheduled maintenance |
+| Public | `/status` | Public status page (read-only) |
 | SLA | `/sla` | SLA reports and breaches |
 | Admin | `/admin` | Manage systems and webhooks |
 | Logs | `/logs` | Change history |
 | Analytics | `/analytics` | Statistics and SLA |
-| API Docs | `/api-docs` | Interactive API documentation |
+| Swagger | `/swagger/` | Interactive API documentation |
+| Metrics | `/metrics` | Prometheus metrics endpoint |
 
 ## REST API
 
