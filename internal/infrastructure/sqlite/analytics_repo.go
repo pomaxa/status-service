@@ -80,15 +80,96 @@ func (r *AnalyticsRepo) GetUptimeByDependencyID(ctx context.Context, dependencyI
 }
 
 // GetOverallAnalytics returns aggregate analytics for all systems
+// It calculates metrics per-system and then averages them to ensure correlation
 func (r *AnalyticsRepo) GetOverallAnalytics(ctx context.Context, start, end time.Time) (*domain.Analytics, error) {
-	logs, err := r.logRepo.GetByTimeRange(ctx, start, end)
+	// Get all system IDs
+	rows, err := r.db.QueryContext(ctx, "SELECT id FROM systems")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get systems: %w", err)
+	}
+	defer rows.Close()
+
+	var systemIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("failed to scan system id: %w", err)
+		}
+		systemIDs = append(systemIDs, id)
 	}
 
-	incidents := r.calculateIncidents(logs, nil, nil)
+	if len(systemIDs) == 0 {
+		// No systems, return 100% uptime
+		return &domain.Analytics{
+			EntityID:            0,
+			EntityType:          "overall",
+			EntityName:          "All Systems",
+			PeriodStart:         start,
+			PeriodEnd:           end,
+			UptimePercent:       100,
+			AvailabilityPercent: 100,
+		}, nil
+	}
 
-	return r.buildAnalytics(0, "overall", "All Systems", start, end, logs, incidents), nil
+	// Calculate metrics for each system and aggregate
+	var totalUptime, totalAvailability float64
+	var totalIncidents, resolvedIncidents, ongoingIncidents int
+	var totalDowntime, totalUnavailable, longestIncident time.Duration
+
+	for _, sysID := range systemIDs {
+		analytics, err := r.GetUptimeBySystemID(ctx, sysID, start, end)
+		if err != nil {
+			continue // Skip systems that fail
+		}
+
+		totalUptime += analytics.UptimePercent
+		totalAvailability += analytics.AvailabilityPercent
+		totalIncidents += analytics.TotalIncidents
+		resolvedIncidents += analytics.ResolvedIncidents
+		ongoingIncidents += analytics.OngoingIncidents
+		totalDowntime += analytics.TotalDowntime
+		totalUnavailable += analytics.TotalUnavailable
+		if analytics.LongestIncident > longestIncident {
+			longestIncident = analytics.LongestIncident
+		}
+	}
+
+	n := float64(len(systemIDs))
+	avgUptime := totalUptime / n
+	avgAvailability := totalAvailability / n
+
+	totalDuration := end.Sub(start)
+	var period string
+	hours := totalDuration.Hours()
+	switch {
+	case hours <= 1:
+		period = "1h"
+	case hours <= 24:
+		period = "24h"
+	case hours <= 24*7:
+		period = "7d"
+	case hours <= 24*30:
+		period = "30d"
+	default:
+		period = fmt.Sprintf("%.0fd", hours/24)
+	}
+
+	return &domain.Analytics{
+		EntityID:            0,
+		EntityType:          "overall",
+		EntityName:          "All Systems",
+		Period:              period,
+		PeriodStart:         start,
+		PeriodEnd:           end,
+		TotalIncidents:      totalIncidents,
+		ResolvedIncidents:   resolvedIncidents,
+		OngoingIncidents:    ongoingIncidents,
+		TotalDowntime:       totalDowntime,
+		TotalUnavailable:    totalUnavailable,
+		LongestIncident:     longestIncident,
+		UptimePercent:       avgUptime,
+		AvailabilityPercent: avgAvailability,
+	}, nil
 }
 
 func (r *AnalyticsRepo) calculateIncidents(logs []*domain.StatusLog, systemID, dependencyID *int64) []domain.IncidentPeriod {
