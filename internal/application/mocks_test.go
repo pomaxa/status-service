@@ -308,6 +308,7 @@ type MockLatencyRepository struct {
 	GetStatsFunc func(ctx context.Context, dependencyID int64, start, end time.Time) (*domain.LatencyStats, error)
 	GetDailyUptimeFunc func(ctx context.Context, dependencyID int64, days int) ([]domain.UptimePoint, error)
 	GetAggregatedFunc func(ctx context.Context, dependencyID int64, start, end time.Time, intervalMinutes int) ([]domain.LatencyPoint, error)
+	CleanupFunc func(ctx context.Context, olderThan time.Time) error
 }
 
 func NewMockLatencyRepository() *MockLatencyRepository {
@@ -367,6 +368,9 @@ func (m *MockLatencyRepository) GetStats(ctx context.Context, dependencyID int64
 }
 
 func (m *MockLatencyRepository) Cleanup(ctx context.Context, olderThan time.Time) error {
+	if m.CleanupFunc != nil {
+		return m.CleanupFunc(ctx, olderThan)
+	}
 	return nil
 }
 
@@ -376,6 +380,7 @@ type MockIncidentRepository struct {
 	Updates      []*domain.IncidentUpdate
 	CreateFunc   func(ctx context.Context, i *domain.Incident) error
 	GetByIDFunc  func(ctx context.Context, id int64) (*domain.Incident, error)
+	GetRecentFunc func(ctx context.Context, days int) ([]*domain.Incident, error)
 }
 
 func NewMockIncidentRepository() *MockIncidentRepository {
@@ -419,7 +424,10 @@ func (m *MockIncidentRepository) GetActive(ctx context.Context) ([]*domain.Incid
 	return result, nil
 }
 
-func (m *MockIncidentRepository) GetRecent(ctx context.Context, limit int) ([]*domain.Incident, error) {
+func (m *MockIncidentRepository) GetRecent(ctx context.Context, days int) ([]*domain.Incident, error) {
+	if m.GetRecentFunc != nil {
+		return m.GetRecentFunc(ctx, days)
+	}
 	var result []*domain.Incident
 	for _, i := range m.Incidents {
 		result = append(result, i)

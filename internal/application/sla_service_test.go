@@ -2,10 +2,13 @@ package application
 
 import (
 	"context"
+	"math"
 	"status-incident/internal/domain"
 	"testing"
 	"time"
 )
+
+const slaEpsilon = 0.001
 
 func TestSLAService_parsePeriod(t *testing.T) {
 	s := &SLAService{}
@@ -889,4 +892,294 @@ func (m *MockSLABreachRepository) GetByPeriod(ctx context.Context, start, end ti
 		}
 	}
 	return result, nil
+}
+
+// ============= Float Comparison and Content Validation Tests =============
+
+func TestSLAService_CheckForBreaches_FloatComparison(t *testing.T) {
+	ctx := context.Background()
+
+	systemRepo := NewMockSystemRepository()
+	analyticsRepo := NewMockAnalyticsRepository()
+	breachRepo := NewMockSLABreachRepository()
+
+	service := NewSLAService(
+		systemRepo,
+		nil,
+		analyticsRepo,
+		nil,
+		breachRepo,
+		nil,
+		nil,
+	)
+
+	tests := []struct {
+		name           string
+		slaTarget      float64
+		actualUptime   float64
+		expectBreach   bool
+	}{
+		{"exactly at target", 99.9, 99.9, false},
+		{"slightly above", 99.9, 99.91, false},
+		{"slightly below", 99.9, 99.89, true},
+		{"well below", 99.9, 98.5, true},
+		{"well above", 99.9, 99.99, false},
+		{"100% target met", 100.0, 100.0, false},
+		{"100% target missed", 100.0, 99.99, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear previous state
+			breachRepo.Breaches = make(map[int64]*domain.SLABreachEvent)
+			systemRepo.Systems = make(map[int64]*domain.System)
+
+			// Create system with specific target
+			system, _ := domain.NewSystem("Test System", "", "", "")
+			system.SetSLATarget(tt.slaTarget)
+			systemRepo.Create(ctx, system)
+
+			// Set analytics
+			analyticsRepo.GetUptimeBySystemIDFunc = func(ctx context.Context, systemID int64, start, end time.Time) (*domain.Analytics, error) {
+				return &domain.Analytics{
+					UptimePercent: tt.actualUptime,
+				}, nil
+			}
+
+			breaches, err := service.CheckForBreaches(ctx, "monthly")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if tt.expectBreach && len(breaches) == 0 {
+				t.Errorf("expected breach for uptime %.2f%% vs target %.2f%%", tt.actualUptime, tt.slaTarget)
+			}
+			if !tt.expectBreach && len(breaches) > 0 {
+				t.Errorf("unexpected breach for uptime %.2f%% vs target %.2f%%", tt.actualUptime, tt.slaTarget)
+			}
+
+			// Validate breach content
+			if len(breaches) > 0 {
+				breach := breaches[0]
+				if math.Abs(breach.SLATarget-tt.slaTarget) > slaEpsilon {
+					t.Errorf("SLATarget: expected %.2f, got %.2f", tt.slaTarget, breach.SLATarget)
+				}
+				if math.Abs(breach.ActualValue-tt.actualUptime) > slaEpsilon {
+					t.Errorf("ActualValue: expected %.2f, got %.2f", tt.actualUptime, breach.ActualValue)
+				}
+			}
+		})
+	}
+}
+
+func TestSLAService_GetBreaches_ContentValidation(t *testing.T) {
+	ctx := context.Background()
+
+	breachRepo := NewMockSLABreachRepository()
+	service := NewSLAService(nil, nil, nil, nil, breachRepo, nil, nil)
+
+	now := time.Now()
+
+	// Create breaches with specific content
+	breach1 := &domain.SLABreachEvent{
+		SystemID:    1,
+		SystemName:  "API Gateway",
+		BreachType:  "uptime",
+		SLATarget:   99.9,
+		ActualValue: 98.5,
+		Period:      "monthly",
+		DetectedAt:  now.Add(-time.Hour),
+	}
+	breach2 := &domain.SLABreachEvent{
+		SystemID:    2,
+		SystemName:  "Database",
+		BreachType:  "uptime",
+		SLATarget:   99.99,
+		ActualValue: 99.5,
+		Period:      "weekly",
+		DetectedAt:  now,
+	}
+
+	breachRepo.Create(ctx, breach1)
+	breachRepo.Create(ctx, breach2)
+
+	breaches, err := service.GetBreaches(ctx, 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(breaches) != 2 {
+		t.Fatalf("expected 2 breaches, got %d", len(breaches))
+	}
+
+	// Create map for easier lookup
+	breachMap := make(map[int64]*domain.SLABreachEvent)
+	for _, b := range breaches {
+		breachMap[b.SystemID] = b
+	}
+
+	// Validate breach 1
+	if b, ok := breachMap[1]; !ok {
+		t.Error("breach for system 1 not found")
+	} else {
+		if b.SystemName != "API Gateway" {
+			t.Errorf("breach 1: expected SystemName 'API Gateway', got %q", b.SystemName)
+		}
+		if math.Abs(b.SLATarget-99.9) > slaEpsilon {
+			t.Errorf("breach 1: expected SLATarget 99.9, got %f", b.SLATarget)
+		}
+		if math.Abs(b.ActualValue-98.5) > slaEpsilon {
+			t.Errorf("breach 1: expected ActualValue 98.5, got %f", b.ActualValue)
+		}
+	}
+
+	// Validate breach 2
+	if b, ok := breachMap[2]; !ok {
+		t.Error("breach for system 2 not found")
+	} else {
+		if b.SystemName != "Database" {
+			t.Errorf("breach 2: expected SystemName 'Database', got %q", b.SystemName)
+		}
+		if b.Period != "weekly" {
+			t.Errorf("breach 2: expected Period 'weekly', got %q", b.Period)
+		}
+	}
+}
+
+func TestSLAService_GenerateReport_SystemReportsContentValidation(t *testing.T) {
+	ctx := context.Background()
+
+	systemRepo := NewMockSystemRepository()
+	depRepo := NewMockDependencyRepository()
+	analyticsRepo := NewMockAnalyticsRepository()
+	reportRepo := NewMockSLAReportRepository()
+	latencyRepo := NewMockLatencyRepository()
+
+	service := NewSLAService(
+		systemRepo,
+		depRepo,
+		analyticsRepo,
+		reportRepo,
+		nil,
+		latencyRepo,
+		nil,
+	)
+
+	// Create systems with different targets
+	system1, _ := domain.NewSystem("API Gateway", "", "", "ops@example.com")
+	system1.SetSLATarget(99.9)
+	systemRepo.Create(ctx, system1)
+
+	system2, _ := domain.NewSystem("Database", "", "", "dba@example.com")
+	system2.SetSLATarget(99.99)
+	systemRepo.Create(ctx, system2)
+
+	// Set up different analytics for each system
+	analyticsRepo.GetUptimeBySystemIDFunc = func(ctx context.Context, systemID int64, start, end time.Time) (*domain.Analytics, error) {
+		if systemID == system1.ID {
+			return &domain.Analytics{
+				UptimePercent:       99.95,
+				AvailabilityPercent: 99.98,
+				TotalIncidents:      2,
+			}, nil
+		}
+		return &domain.Analytics{
+			UptimePercent:       99.5, // Below target
+			AvailabilityPercent: 99.7,
+			TotalIncidents:      5,
+		}, nil
+	}
+
+	report, err := service.GenerateReport(ctx, "Test Report", "monthly", "admin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(report.SystemReports) != 2 {
+		t.Fatalf("expected 2 system reports, got %d", len(report.SystemReports))
+	}
+
+	// Create map for easier lookup
+	sysReportMap := make(map[int64]domain.SystemSLAReport)
+	for _, sr := range report.SystemReports {
+		sysReportMap[sr.SystemID] = sr
+	}
+
+	// Validate system 1 report
+	if sr, ok := sysReportMap[system1.ID]; !ok {
+		t.Errorf("system report for %q not found", system1.Name)
+	} else {
+		if sr.SystemName != "API Gateway" {
+			t.Errorf("system 1: expected name 'API Gateway', got %q", sr.SystemName)
+		}
+		if math.Abs(sr.SLATarget-99.9) > slaEpsilon {
+			t.Errorf("system 1: expected SLATarget 99.9, got %f", sr.SLATarget)
+		}
+		if !sr.SLAMet {
+			t.Errorf("system 1: expected SLAMet=true (99.95 >= 99.9)")
+		}
+		if sr.TotalIncidents != 2 {
+			t.Errorf("system 1: expected TotalIncidents 2, got %d", sr.TotalIncidents)
+		}
+	}
+
+	// Validate system 2 report
+	if sr, ok := sysReportMap[system2.ID]; !ok {
+		t.Errorf("system report for %q not found", system2.Name)
+	} else {
+		if sr.SystemName != "Database" {
+			t.Errorf("system 2: expected name 'Database', got %q", sr.SystemName)
+		}
+		if sr.SLAMet {
+			t.Errorf("system 2: expected SLAMet=false (99.5 < 99.99)")
+		}
+	}
+}
+
+func TestSLAService_calculateMTTR_EdgeCases(t *testing.T) {
+	s := &SLAService{}
+	now := time.Now()
+
+	// Test very small durations
+	t.Run("very short incident", func(t *testing.T) {
+		incidents := []domain.IncidentPeriod{
+			{
+				StartedAt: now.Add(-100 * time.Millisecond),
+				EndedAt:   timePtr(now),
+			},
+		}
+		result := s.calculateMTTR(incidents)
+		expected := 100 * time.Millisecond
+		tolerance := 10 * time.Millisecond
+		if result < expected-tolerance || result > expected+tolerance {
+			t.Errorf("expected ~%v, got %v", expected, result)
+		}
+	})
+
+	// Test very long durations
+	t.Run("very long incident", func(t *testing.T) {
+		incidents := []domain.IncidentPeriod{
+			{
+				StartedAt: now.Add(-48 * time.Hour),
+				EndedAt:   timePtr(now),
+			},
+		}
+		result := s.calculateMTTR(incidents)
+		if result != 48*time.Hour {
+			t.Errorf("expected 48h, got %v", result)
+		}
+	})
+
+	// Test average calculation precision
+	t.Run("average calculation", func(t *testing.T) {
+		incidents := []domain.IncidentPeriod{
+			{StartedAt: now.Add(-3 * time.Hour), EndedAt: timePtr(now.Add(-2 * time.Hour))}, // 1h
+			{StartedAt: now.Add(-1 * time.Hour), EndedAt: timePtr(now.Add(-30 * time.Minute))}, // 30m
+		}
+		result := s.calculateMTTR(incidents)
+		expected := 45 * time.Minute // (60m + 30m) / 2
+		if result != expected {
+			t.Errorf("expected %v, got %v", expected, result)
+		}
+	})
 }

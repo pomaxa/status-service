@@ -357,3 +357,213 @@ func TestIncidentService_DeleteIncident(t *testing.T) {
 		t.Error("expected incident to be deleted")
 	}
 }
+
+// Boundary tests for systemIDs parameter
+func TestIncidentService_CreateIncident_EmptySystemIDs(t *testing.T) {
+	incidentRepo := NewMockIncidentRepository()
+	service := NewIncidentService(incidentRepo)
+
+	// Test with empty slice (not nil) - should NOT set system IDs
+	incident, err := service.CreateIncident(
+		context.Background(),
+		"Outage",
+		"Message",
+		domain.SeverityMajor,
+		[]int64{}, // Empty slice
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if incident == nil {
+		t.Fatal("expected non-nil incident")
+	}
+	// Empty slice should result in no system IDs being set
+	if len(incident.SystemIDs) != 0 {
+		t.Errorf("expected 0 system IDs for empty slice, got %d", len(incident.SystemIDs))
+	}
+}
+
+func TestIncidentService_CreateIncident_SingleSystemID(t *testing.T) {
+	incidentRepo := NewMockIncidentRepository()
+	service := NewIncidentService(incidentRepo)
+
+	// Test with exactly one system ID (boundary)
+	incident, err := service.CreateIncident(
+		context.Background(),
+		"Single System Issue",
+		"Only one system affected",
+		domain.SeverityMinor,
+		[]int64{42}, // Exactly one
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if incident == nil {
+		t.Fatal("expected non-nil incident")
+	}
+	if len(incident.SystemIDs) != 1 {
+		t.Errorf("expected 1 system ID, got %d", len(incident.SystemIDs))
+	}
+	if incident.SystemIDs[0] != 42 {
+		t.Errorf("expected system ID 42, got %d", incident.SystemIDs[0])
+	}
+}
+
+func TestIncidentService_CreateIncident_SystemIDsContentValidation(t *testing.T) {
+	incidentRepo := NewMockIncidentRepository()
+	service := NewIncidentService(incidentRepo)
+
+	expectedIDs := []int64{1, 2, 3, 5, 8}
+	incident, err := service.CreateIncident(
+		context.Background(),
+		"Multi-system Outage",
+		"Multiple systems affected",
+		domain.SeverityCritical,
+		expectedIDs,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(incident.SystemIDs) != len(expectedIDs) {
+		t.Fatalf("expected %d system IDs, got %d", len(expectedIDs), len(incident.SystemIDs))
+	}
+
+	// Validate each system ID
+	for i, expectedID := range expectedIDs {
+		if incident.SystemIDs[i] != expectedID {
+			t.Errorf("systemIDs[%d]: expected %d, got %d", i, expectedID, incident.SystemIDs[i])
+		}
+	}
+}
+
+// Boundary tests for GetRecentIncidents days parameter
+func TestIncidentService_GetRecentIncidents_BoundaryConditions(t *testing.T) {
+	incidentRepo := NewMockIncidentRepository()
+
+	var capturedDays int
+	incidentRepo.GetRecentFunc = func(ctx context.Context, days int) ([]*domain.Incident, error) {
+		capturedDays = days
+		return []*domain.Incident{}, nil
+	}
+
+	service := NewIncidentService(incidentRepo)
+
+	tests := []struct {
+		name         string
+		inputDays    int
+		expectedDays int
+	}{
+		{"zero defaults to 7", 0, 7},
+		{"negative defaults to 7", -5, 7},
+		{"exactly 1 is valid", 1, 1},
+		{"positive value used", 14, 14},
+		{"large value used", 365, 365},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := service.GetRecentIncidents(context.Background(), tt.inputDays)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if capturedDays != tt.expectedDays {
+				t.Errorf("expected days %d, got %d", tt.expectedDays, capturedDays)
+			}
+		})
+	}
+}
+
+func TestIncidentService_GetAllIncidents_ContentValidation(t *testing.T) {
+	incidentRepo := NewMockIncidentRepository()
+
+	incident1, _ := domain.NewIncident("First Incident", "First message", domain.SeverityMinor)
+	incident1.ID = 1
+	incident2, _ := domain.NewIncident("Second Incident", "Second message", domain.SeverityCritical)
+	incident2.ID = 2
+
+	incidentRepo.Incidents[1] = incident1
+	incidentRepo.Incidents[2] = incident2
+
+	service := NewIncidentService(incidentRepo)
+
+	incidents, err := service.GetAllIncidents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(incidents) != 2 {
+		t.Fatalf("expected 2 incidents, got %d", len(incidents))
+	}
+
+	// Create a map for easier verification (order may not be guaranteed)
+	incidentMap := make(map[int64]*domain.Incident)
+	for _, inc := range incidents {
+		incidentMap[inc.ID] = inc
+	}
+
+	// Validate first incident
+	if inc, ok := incidentMap[1]; !ok {
+		t.Error("incident ID 1 not found")
+	} else {
+		if inc.Title != "First Incident" {
+			t.Errorf("incident 1: expected title 'First Incident', got %q", inc.Title)
+		}
+		if inc.Severity != domain.SeverityMinor {
+			t.Errorf("incident 1: expected severity Minor, got %q", inc.Severity)
+		}
+	}
+
+	// Validate second incident
+	if inc, ok := incidentMap[2]; !ok {
+		t.Error("incident ID 2 not found")
+	} else {
+		if inc.Title != "Second Incident" {
+			t.Errorf("incident 2: expected title 'Second Incident', got %q", inc.Title)
+		}
+		if inc.Severity != domain.SeverityCritical {
+			t.Errorf("incident 2: expected severity Critical, got %q", inc.Severity)
+		}
+	}
+}
+
+func TestIncidentService_GetIncidentUpdates_ContentValidation(t *testing.T) {
+	incidentRepo := NewMockIncidentRepository()
+
+	update1, _ := domain.NewIncidentUpdate(1, domain.IncidentInvestigating, "Started investigation", "admin")
+	update2, _ := domain.NewIncidentUpdate(1, domain.IncidentIdentified, "Found root cause", "engineer")
+
+	incidentRepo.Updates = append(incidentRepo.Updates, update1, update2)
+
+	service := NewIncidentService(incidentRepo)
+
+	updates, err := service.GetIncidentUpdates(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(updates) != 2 {
+		t.Fatalf("expected 2 updates, got %d", len(updates))
+	}
+
+	// Validate first update
+	if updates[0].Message != "Started investigation" {
+		t.Errorf("update[0]: expected message 'Started investigation', got %q", updates[0].Message)
+	}
+	if updates[0].Status != domain.IncidentInvestigating {
+		t.Errorf("update[0]: expected status Investigating, got %q", updates[0].Status)
+	}
+	if updates[0].CreatedBy != "admin" {
+		t.Errorf("update[0]: expected CreatedBy 'admin', got %q", updates[0].CreatedBy)
+	}
+
+	// Validate second update
+	if updates[1].Message != "Found root cause" {
+		t.Errorf("update[1]: expected message 'Found root cause', got %q", updates[1].Message)
+	}
+	if updates[1].Status != domain.IncidentIdentified {
+		t.Errorf("update[1]: expected status Identified, got %q", updates[1].Status)
+	}
+}
