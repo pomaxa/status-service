@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"encoding/json"
 	"status-incident/internal/domain"
 	"strings"
@@ -488,5 +489,372 @@ func TestNotificationService_formatTeamsSLABreach(t *testing.T) {
 	summary := result["summary"].(string)
 	if !strings.Contains(summary, "API") {
 		t.Errorf("summary should contain system name, got %q", summary)
+	}
+}
+
+func TestNotificationService_formatTelegramSLABreach(t *testing.T) {
+	s := &NotificationService{}
+
+	tests := []struct {
+		name           string
+		webhookURL     string
+		payload        *domain.SLABreachPayload
+		expectedChatID string
+	}{
+		{
+			name:       "simple URL",
+			webhookURL: "https://api.telegram.org/bot123/sendMessage",
+			payload: &domain.SLABreachPayload{
+				Event:       domain.EventSLABreach,
+				Timestamp:   time.Now(),
+				System:      &domain.SystemInfo{ID: 1, Name: "API"},
+				BreachType:  "uptime",
+				SLATarget:   99.9,
+				ActualValue: 98.5,
+				Period:      "monthly",
+				Message:     "SLA breach message",
+			},
+			expectedChatID: "",
+		},
+		{
+			name:       "token:chatid format",
+			webhookURL: "12345:@mychannel",
+			payload: &domain.SLABreachPayload{
+				Event:       domain.EventSLABreach,
+				Timestamp:   time.Now(),
+				System:      &domain.SystemInfo{ID: 1, Name: "API"},
+				BreachType:  "uptime",
+				SLATarget:   99.9,
+				ActualValue: 98.5,
+				Period:      "monthly",
+				Message:     "SLA breach message",
+			},
+			expectedChatID: "@mychannel",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := s.formatTelegramSLABreach(tt.webhookURL, tt.payload)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			var result map[string]interface{}
+			if err := json.Unmarshal(body, &result); err != nil {
+				t.Fatalf("failed to unmarshal JSON: %v", err)
+			}
+
+			// Check text contains system name
+			text := result["text"].(string)
+			if !strings.Contains(text, "API") {
+				t.Errorf("text should contain system name, got %q", text)
+			}
+
+			// Check parse_mode
+			parseMode := result["parse_mode"].(string)
+			if parseMode != "HTML" {
+				t.Errorf("expected parse_mode HTML, got %q", parseMode)
+			}
+
+			// Check chat_id if expected
+			if tt.expectedChatID != "" {
+				chatID, ok := result["chat_id"].(string)
+				if !ok {
+					t.Fatal("missing chat_id field")
+				}
+				if chatID != tt.expectedChatID {
+					t.Errorf("expected chat_id %q, got %q", tt.expectedChatID, chatID)
+				}
+			}
+		})
+	}
+}
+
+func TestNotificationService_buildPayload(t *testing.T) {
+	ctx := context.Background()
+
+	// Set up mock repositories
+	systemRepo := NewMockSystemRepository()
+	depRepo := NewMockDependencyRepository()
+
+	// Create test system
+	system, _ := domain.NewSystem("Test System", "", "", "")
+	systemRepo.Create(ctx, system)
+
+	// Create test dependency
+	dep := &domain.Dependency{
+		SystemID: system.ID,
+		Name:     "Test Dependency",
+	}
+	depRepo.Create(ctx, dep)
+
+	service := NewNotificationService(nil, systemRepo, depRepo)
+
+	tests := []struct {
+		name           string
+		statusLog      *domain.StatusLog
+		expectedSystem bool
+		expectedDep    bool
+	}{
+		{
+			name: "system status log",
+			statusLog: &domain.StatusLog{
+				SystemID:  &system.ID,
+				OldStatus: domain.StatusGreen,
+				NewStatus: domain.StatusRed,
+				Message:   "Test message",
+				Source:    domain.SourceManual,
+				CreatedAt: time.Now(),
+			},
+			expectedSystem: true,
+			expectedDep:    false,
+		},
+		{
+			name: "dependency status log",
+			statusLog: &domain.StatusLog{
+				DependencyID: &dep.ID,
+				OldStatus:    domain.StatusGreen,
+				NewStatus:    domain.StatusYellow,
+				Message:      "Dependency degraded",
+				Source:       domain.SourceHeartbeat,
+				CreatedAt:    time.Now(),
+			},
+			expectedSystem: true, // Should also get system from dependency
+			expectedDep:    true,
+		},
+		{
+			name: "system and dependency status log",
+			statusLog: &domain.StatusLog{
+				SystemID:     &system.ID,
+				DependencyID: &dep.ID,
+				OldStatus:    domain.StatusYellow,
+				NewStatus:    domain.StatusGreen,
+				Message:      "Recovered",
+				Source:       domain.SourceHeartbeat,
+				CreatedAt:    time.Now(),
+			},
+			expectedSystem: true,
+			expectedDep:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := service.buildPayload(ctx, tt.statusLog)
+
+			if payload == nil {
+				t.Fatal("expected non-nil payload")
+			}
+
+			if payload.Event != domain.EventStatusChange {
+				t.Errorf("expected event %s, got %s", domain.EventStatusChange, payload.Event)
+			}
+
+			if payload.OldStatus != tt.statusLog.OldStatus {
+				t.Errorf("expected OldStatus %s, got %s", tt.statusLog.OldStatus, payload.OldStatus)
+			}
+
+			if payload.NewStatus != tt.statusLog.NewStatus {
+				t.Errorf("expected NewStatus %s, got %s", tt.statusLog.NewStatus, payload.NewStatus)
+			}
+
+			if tt.expectedSystem && payload.System == nil {
+				t.Error("expected System to be set")
+			}
+
+			if tt.expectedDep && payload.Dependency == nil {
+				t.Error("expected Dependency to be set")
+			}
+		})
+	}
+}
+
+func TestNotificationService_SendTestNotification(t *testing.T) {
+	ctx := context.Background()
+
+	webhookRepo := NewMockWebhookRepository()
+	systemRepo := NewMockSystemRepository()
+	depRepo := NewMockDependencyRepository()
+
+	service := NewNotificationService(webhookRepo, systemRepo, depRepo)
+
+	// Test with non-existent webhook
+	err := service.SendTestNotification(ctx, 999)
+	if err == nil {
+		t.Error("expected error for non-existent webhook")
+	}
+	if !strings.Contains(err.Error(), "webhook not found") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+
+	// Create webhook and test
+	webhook := &domain.Webhook{
+		Name:    "Test Webhook",
+		URL:     "https://example.com/webhook",
+		Type:    domain.WebhookTypeGeneric,
+		Enabled: true,
+		Events:  []domain.WebhookEvent{domain.EventStatusChange},
+	}
+	webhookRepo.Create(ctx, webhook)
+
+	// Note: This will attempt to send (and fail) but should not return error
+	// because sendNotification handles errors internally
+	err = service.SendTestNotification(ctx, webhook.ID)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestNotificationService_NotifyStatusChange_NoWebhooks(t *testing.T) {
+	ctx := context.Background()
+
+	webhookRepo := NewMockWebhookRepository()
+	systemRepo := NewMockSystemRepository()
+	depRepo := NewMockDependencyRepository()
+
+	service := NewNotificationService(webhookRepo, systemRepo, depRepo)
+
+	// Create system
+	system, _ := domain.NewSystem("Test System", "", "", "")
+	systemRepo.Create(ctx, system)
+
+	statusLog := &domain.StatusLog{
+		SystemID:  &system.ID,
+		OldStatus: domain.StatusGreen,
+		NewStatus: domain.StatusRed,
+		Message:   "System down",
+		Source:    domain.SourceManual,
+		CreatedAt: time.Now(),
+	}
+
+	// Should not panic when no webhooks exist
+	service.NotifyStatusChange(ctx, statusLog)
+}
+
+func TestNotificationService_NotifyStatusChange_WithWebhooks(t *testing.T) {
+	ctx := context.Background()
+
+	webhookRepo := NewMockWebhookRepository()
+	systemRepo := NewMockSystemRepository()
+	depRepo := NewMockDependencyRepository()
+
+	service := NewNotificationService(webhookRepo, systemRepo, depRepo)
+
+	// Create system
+	system, _ := domain.NewSystem("Test System", "", "", "")
+	systemRepo.Create(ctx, system)
+
+	// Create enabled webhook
+	webhook := &domain.Webhook{
+		Name:    "Test Webhook",
+		URL:     "https://example.com/webhook",
+		Type:    domain.WebhookTypeSlack,
+		Enabled: true,
+		Events:  []domain.WebhookEvent{domain.EventStatusChange},
+	}
+	webhookRepo.Create(ctx, webhook)
+
+	statusLog := &domain.StatusLog{
+		SystemID:  &system.ID,
+		OldStatus: domain.StatusGreen,
+		NewStatus: domain.StatusRed,
+		Message:   "System down",
+		Source:    domain.SourceManual,
+		CreatedAt: time.Now(),
+	}
+
+	// Should not panic, sends notification asynchronously
+	service.NotifyStatusChange(ctx, statusLog)
+	// Give time for goroutine to start
+	time.Sleep(10 * time.Millisecond)
+}
+
+func TestNotificationService_NotifySLABreach_NoWebhooks(t *testing.T) {
+	ctx := context.Background()
+
+	webhookRepo := NewMockWebhookRepository()
+	systemRepo := NewMockSystemRepository()
+	depRepo := NewMockDependencyRepository()
+
+	service := NewNotificationService(webhookRepo, systemRepo, depRepo)
+
+	breach := &domain.SLABreachEvent{
+		SystemID:    1,
+		SystemName:  "Test System",
+		BreachType:  "uptime",
+		SLATarget:   99.9,
+		ActualValue: 98.5,
+		Period:      "monthly",
+		PeriodStart: time.Now().AddDate(0, -1, 0),
+		PeriodEnd:   time.Now(),
+		DetectedAt:  time.Now(),
+	}
+
+	// Should not panic when no webhooks exist
+	service.NotifySLABreach(ctx, breach)
+}
+
+func TestNotificationService_NotifySLABreach_WithWebhooks(t *testing.T) {
+	ctx := context.Background()
+
+	webhookRepo := NewMockWebhookRepository()
+	systemRepo := NewMockSystemRepository()
+	depRepo := NewMockDependencyRepository()
+
+	service := NewNotificationService(webhookRepo, systemRepo, depRepo)
+
+	// Create enabled webhook
+	webhook := &domain.Webhook{
+		Name:    "SLA Webhook",
+		URL:     "https://example.com/webhook",
+		Type:    domain.WebhookTypeSlack,
+		Enabled: true,
+		Events:  []domain.WebhookEvent{domain.EventSLABreach},
+	}
+	webhookRepo.Create(ctx, webhook)
+
+	breach := &domain.SLABreachEvent{
+		SystemID:    1,
+		SystemName:  "Test System",
+		BreachType:  "uptime",
+		SLATarget:   99.9,
+		ActualValue: 98.5,
+		Period:      "monthly",
+		PeriodStart: time.Now().AddDate(0, -1, 0),
+		PeriodEnd:   time.Now(),
+		DetectedAt:  time.Now(),
+	}
+
+	// Should not panic, sends notification asynchronously
+	service.NotifySLABreach(ctx, breach)
+	// Give time for goroutine to start
+	time.Sleep(10 * time.Millisecond)
+}
+
+func TestNotificationService_DependencyOnly(t *testing.T) {
+	s := &NotificationService{}
+
+	payload := &domain.NotificationPayload{
+		Event:      domain.EventStatusChange,
+		Timestamp:  time.Now(),
+		Dependency: &domain.DepInfo{ID: 1, Name: "PostgreSQL"},
+		NewStatus:  domain.StatusRed,
+		Source:     "heartbeat",
+	}
+
+	body, err := s.formatSlackPayload(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	text := result["text"].(string)
+	if !strings.Contains(text, "PostgreSQL") {
+		t.Errorf("text should contain dependency name, got %q", text)
 	}
 }
