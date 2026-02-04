@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Automatic status propagation from dependencies to parent systems
+  - When any dependency has issues (yellow/red), the parent system's status is automatically updated to reflect the worst-case status
+  - Aggregation strategy: any red → system red, any yellow (no red) → system yellow, all green → system green
+  - Triggered after heartbeat checks, manual dependency status updates, and dependency deletion
+  - New `SourcePropagation` change source for tracking propagated status changes in logs
+  - New `MaxSeverityStatus()` helper function for calculating aggregate status
+
 ## [1.1.1] - 2026-01-26
 
 ### Fixed
