@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-02-04
+
 ### Added
 - Automatic status propagation from dependencies to parent systems
   - When any dependency has issues (yellow/red), the parent system's status is automatically updated to reflect the worst-case status
