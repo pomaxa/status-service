@@ -13,6 +13,7 @@ type HeartbeatService struct {
 	latencyRepo         domain.LatencyRepository
 	checker             domain.HealthChecker
 	notificationService *NotificationService
+	propagationService  *StatusPropagationService
 }
 
 // NewHeartbeatService creates a new HeartbeatService
@@ -36,6 +37,11 @@ func (s *HeartbeatService) SetLatencyRepo(repo domain.LatencyRepository) {
 // SetNotificationService sets the notification service for sending webhooks
 func (s *HeartbeatService) SetNotificationService(ns *NotificationService) {
 	s.notificationService = ns
+}
+
+// SetPropagationService sets the propagation service for propagating status to parent systems
+func (s *HeartbeatService) SetPropagationService(ps *StatusPropagationService) {
+	s.propagationService = ps
 }
 
 // CheckAllDependencies checks all dependencies with heartbeat configured
@@ -114,6 +120,13 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 		// Send notifications
 		if s.notificationService != nil {
 			go s.notificationService.NotifyStatusChange(ctx, log)
+		}
+
+		// Propagate status change to parent system
+		if s.propagationService != nil {
+			if _, err := s.propagationService.PropagateStatusToSystem(ctx, dep.SystemID); err != nil {
+				fmt.Printf("failed to propagate status to system %d: %v\n", dep.SystemID, err)
+			}
 		}
 	}
 

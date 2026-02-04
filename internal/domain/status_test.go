@@ -120,3 +120,71 @@ func TestStatus_Severity(t *testing.T) {
 		})
 	}
 }
+
+func TestMaxSeverityStatus(t *testing.T) {
+	tests := []struct {
+		name     string
+		statuses []Status
+		expected Status
+	}{
+		{
+			name:     "empty slice returns green",
+			statuses: []Status{},
+			expected: StatusGreen,
+		},
+		{
+			name:     "single green",
+			statuses: []Status{StatusGreen},
+			expected: StatusGreen,
+		},
+		{
+			name:     "single yellow",
+			statuses: []Status{StatusYellow},
+			expected: StatusYellow,
+		},
+		{
+			name:     "single red",
+			statuses: []Status{StatusRed},
+			expected: StatusRed,
+		},
+		{
+			name:     "all green",
+			statuses: []Status{StatusGreen, StatusGreen, StatusGreen},
+			expected: StatusGreen,
+		},
+		{
+			name:     "green and yellow returns yellow",
+			statuses: []Status{StatusGreen, StatusYellow, StatusGreen},
+			expected: StatusYellow,
+		},
+		{
+			name:     "green and red returns red",
+			statuses: []Status{StatusGreen, StatusRed, StatusGreen},
+			expected: StatusRed,
+		},
+		{
+			name:     "yellow and red returns red",
+			statuses: []Status{StatusYellow, StatusRed, StatusYellow},
+			expected: StatusRed,
+		},
+		{
+			name:     "all statuses returns red",
+			statuses: []Status{StatusGreen, StatusYellow, StatusRed},
+			expected: StatusRed,
+		},
+		{
+			name:     "multiple of each returns red",
+			statuses: []Status{StatusGreen, StatusGreen, StatusYellow, StatusYellow, StatusRed},
+			expected: StatusRed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := MaxSeverityStatus(tt.statuses)
+			if result != tt.expected {
+				t.Errorf("MaxSeverityStatus(%v) = %q, want %q", tt.statuses, result, tt.expected)
+			}
+		})
+	}
+}

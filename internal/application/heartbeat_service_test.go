@@ -42,6 +42,18 @@ func TestHeartbeatService_SetNotificationService(t *testing.T) {
 	// No panic means success
 }
 
+func TestHeartbeatService_SetPropagationService(t *testing.T) {
+	depRepo := NewMockDependencyRepository()
+	logRepo := NewMockStatusLogRepository()
+	checker := NewMockHealthChecker()
+	service := NewHeartbeatService(depRepo, logRepo, checker)
+
+	systemRepo := NewMockSystemRepository()
+	propagationService := NewStatusPropagationService(systemRepo, depRepo, logRepo)
+	service.SetPropagationService(propagationService)
+	// No panic means success
+}
+
 func TestHeartbeatService_CheckAllDependencies_NoDeps(t *testing.T) {
 	depRepo := NewMockDependencyRepository()
 	logRepo := NewMockStatusLogRepository()
@@ -240,5 +252,72 @@ func TestHeartbeatService_CheckWithStatusChange(t *testing.T) {
 	}
 	if len(logRepo.Logs) != 1 {
 		t.Errorf("expected 1 log for status change, got %d", len(logRepo.Logs))
+	}
+}
+
+func TestHeartbeatService_CheckWithStatusChange_PropagatesStatus(t *testing.T) {
+	// Set up system
+	systemRepo := NewMockSystemRepository()
+	system, _ := domain.NewSystem("API", "API Service", "https://api.example.com", "team@example.com")
+	system.ID = 1
+	system.Status = domain.StatusGreen
+	systemRepo.Systems[1] = system
+
+	// Set up dependency
+	depRepo := NewMockDependencyRepository()
+	dep, _ := domain.NewDependency(1, "Redis", "Cache")
+	dep.ID = 1
+	dep.Status = domain.StatusGreen
+	dep.SetHeartbeatConfig(domain.HeartbeatConfig{URL: "https://redis.example.com/health", Interval: 60})
+	dep.ConsecutiveFailures = 2 // Next failure will trigger status change
+	depRepo.Dependencies[1] = dep
+
+	logRepo := NewMockStatusLogRepository()
+
+	checker := NewMockHealthChecker()
+	checker.CheckWithConfigFunc = func(ctx context.Context, config domain.HeartbeatConfig) domain.HealthCheckResult {
+		return domain.HealthCheckResult{
+			Healthy:    false,
+			LatencyMs:  0,
+			StatusCode: 503,
+		}
+	}
+
+	service := NewHeartbeatService(depRepo, logRepo, checker)
+
+	// Set up propagation service
+	propagationService := NewStatusPropagationService(systemRepo, depRepo, logRepo)
+	service.SetPropagationService(propagationService)
+
+	err := service.CheckAllDependencies(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Dependency should be red
+	if dep.Status != domain.StatusRed {
+		t.Errorf("expected dependency status red, got %q", dep.Status)
+	}
+
+	// System should be red (propagated)
+	if system.Status != domain.StatusRed {
+		t.Errorf("expected system status to be propagated to red, got %q", system.Status)
+	}
+
+	// Should have 2 logs: one for dependency, one for system propagation
+	if len(logRepo.Logs) != 2 {
+		t.Errorf("expected 2 logs (dep + propagation), got %d", len(logRepo.Logs))
+	}
+
+	// Check that second log is from propagation
+	foundPropagation := false
+	for _, log := range logRepo.Logs {
+		if log.Source == domain.SourcePropagation {
+			foundPropagation = true
+			break
+		}
+	}
+	if !foundPropagation {
+		t.Error("expected a log with source 'propagation'")
 	}
 }

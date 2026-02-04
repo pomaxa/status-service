@@ -351,3 +351,141 @@ func TestDependencyService_SetNotificationService(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestDependencyService_SetPropagationService(t *testing.T) {
+	depRepo := NewMockDependencyRepository()
+	logRepo := NewMockStatusLogRepository()
+	service := NewDependencyService(depRepo, logRepo)
+
+	systemRepo := NewMockSystemRepository()
+	propagationService := NewStatusPropagationService(systemRepo, depRepo, logRepo)
+	service.SetPropagationService(propagationService)
+	// No panic means success
+}
+
+func TestDependencyService_UpdateDependencyStatus_PropagatesStatus(t *testing.T) {
+	// Set up system
+	systemRepo := NewMockSystemRepository()
+	system, _ := domain.NewSystem("API", "API Service", "https://api.example.com", "team@example.com")
+	system.ID = 1
+	system.Status = domain.StatusGreen
+	systemRepo.Systems[1] = system
+
+	// Set up dependencies
+	depRepo := NewMockDependencyRepository()
+	dep, _ := domain.NewDependency(1, "Redis", "Cache")
+	dep.ID = 1
+	dep.Status = domain.StatusGreen
+	depRepo.Dependencies[1] = dep
+
+	logRepo := NewMockStatusLogRepository()
+	service := NewDependencyService(depRepo, logRepo)
+
+	// Set up propagation service
+	propagationService := NewStatusPropagationService(systemRepo, depRepo, logRepo)
+	service.SetPropagationService(propagationService)
+
+	// Update dependency status to red
+	_, err := service.UpdateDependencyStatus(context.Background(), 1, "red", "Manual update")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Dependency should be red
+	if dep.Status != domain.StatusRed {
+		t.Errorf("expected dependency status red, got %q", dep.Status)
+	}
+
+	// System should be red (propagated)
+	if system.Status != domain.StatusRed {
+		t.Errorf("expected system status to be propagated to red, got %q", system.Status)
+	}
+
+	// Should have 2 logs: one for dependency, one for system propagation
+	if len(logRepo.Logs) != 2 {
+		t.Errorf("expected 2 logs (dep + propagation), got %d", len(logRepo.Logs))
+	}
+}
+
+func TestDependencyService_DeleteDependency_PropagatesStatus(t *testing.T) {
+	// Set up system with red status
+	systemRepo := NewMockSystemRepository()
+	system, _ := domain.NewSystem("API", "API Service", "https://api.example.com", "team@example.com")
+	system.ID = 1
+	system.Status = domain.StatusRed
+	systemRepo.Systems[1] = system
+
+	// Set up dependencies - one red, one green
+	depRepo := NewMockDependencyRepository()
+	depRed, _ := domain.NewDependency(1, "Redis", "Cache")
+	depRed.ID = 1
+	depRed.Status = domain.StatusRed
+	depGreen, _ := domain.NewDependency(1, "PostgreSQL", "Database")
+	depGreen.ID = 2
+	depGreen.Status = domain.StatusGreen
+	depRepo.Dependencies[1] = depRed
+	depRepo.Dependencies[2] = depGreen
+
+	logRepo := NewMockStatusLogRepository()
+	service := NewDependencyService(depRepo, logRepo)
+
+	// Set up propagation service
+	propagationService := NewStatusPropagationService(systemRepo, depRepo, logRepo)
+	service.SetPropagationService(propagationService)
+
+	// Delete the red dependency
+	err := service.DeleteDependency(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// System should recover to green (only green dependency left)
+	if system.Status != domain.StatusGreen {
+		t.Errorf("expected system status to recover to green after deleting red dependency, got %q", system.Status)
+	}
+
+	// Should have 1 log for system recovery
+	if len(logRepo.Logs) != 1 {
+		t.Errorf("expected 1 log for system recovery, got %d", len(logRepo.Logs))
+	}
+}
+
+func TestDependencyService_UpdateDependencyStatus_NoChangeNoPropagation(t *testing.T) {
+	// Set up system
+	systemRepo := NewMockSystemRepository()
+	system, _ := domain.NewSystem("API", "API Service", "https://api.example.com", "team@example.com")
+	system.ID = 1
+	system.Status = domain.StatusGreen
+	systemRepo.Systems[1] = system
+
+	// Set up dependencies
+	depRepo := NewMockDependencyRepository()
+	dep, _ := domain.NewDependency(1, "Redis", "Cache")
+	dep.ID = 1
+	dep.Status = domain.StatusGreen // Already green
+	depRepo.Dependencies[1] = dep
+
+	logRepo := NewMockStatusLogRepository()
+	service := NewDependencyService(depRepo, logRepo)
+
+	// Set up propagation service
+	propagationService := NewStatusPropagationService(systemRepo, depRepo, logRepo)
+	service.SetPropagationService(propagationService)
+
+	// Update dependency status to green (same status)
+	_, err := service.UpdateDependencyStatus(context.Background(), 1, "green", "No change")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should have 1 log (the status change log is always created even if status is same)
+	// But no propagation should happen
+	if len(logRepo.Logs) != 1 {
+		t.Errorf("expected 1 log (no propagation when status unchanged), got %d", len(logRepo.Logs))
+	}
+
+	// System should remain green
+	if system.Status != domain.StatusGreen {
+		t.Errorf("expected system status to remain green, got %q", system.Status)
+	}
+}

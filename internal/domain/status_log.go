@@ -8,8 +8,9 @@ import (
 type ChangeSource string
 
 const (
-	SourceManual    ChangeSource = "manual"
-	SourceHeartbeat ChangeSource = "heartbeat"
+	SourceManual      ChangeSource = "manual"
+	SourceHeartbeat   ChangeSource = "heartbeat"
+	SourcePropagation ChangeSource = "propagation"
 )
 
 // StatusLog records a status change event

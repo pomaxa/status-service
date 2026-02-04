@@ -102,11 +102,19 @@ func main() {
 		notificationService,
 	)
 
+	// Initialize status propagation service
+	propagationService := application.NewStatusPropagationService(systemRepo, depRepo, logRepo)
+	propagationService.SetNotificationService(notificationService)
+
 	// Set notification service on other services
 	systemService.SetNotificationService(notificationService)
 	depService.SetNotificationService(notificationService)
 	heartbeatService.SetNotificationService(notificationService)
 	heartbeatService.SetLatencyRepo(latencyRepo)
+
+	// Set propagation service on services that can trigger status changes
+	depService.SetPropagationService(propagationService)
+	heartbeatService.SetPropagationService(propagationService)
 
 	// Initialize webhook handlers
 	webhookHandlers := httpserver.NewWebhookHandlers(webhookRepo, notificationService)

@@ -56,3 +56,15 @@ func (s Status) Severity() int {
 	}
 	return -1
 }
+
+// MaxSeverityStatus returns the status with highest severity from a slice.
+// Returns StatusGreen if the slice is empty.
+func MaxSeverityStatus(statuses []Status) Status {
+	max := StatusGreen
+	for _, s := range statuses {
+		if s.Severity() > max.Severity() {
+			max = s
+		}
+	}
+	return max
+}

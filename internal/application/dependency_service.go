@@ -11,6 +11,7 @@ type DependencyService struct {
 	depRepo             domain.DependencyRepository
 	logRepo             domain.StatusLogRepository
 	notificationService *NotificationService
+	propagationService  *StatusPropagationService
 }
 
 // NewDependencyService creates a new DependencyService
@@ -24,6 +25,11 @@ func NewDependencyService(depRepo domain.DependencyRepository, logRepo domain.St
 // SetNotificationService sets the notification service for sending webhooks
 func (s *DependencyService) SetNotificationService(ns *NotificationService) {
 	s.notificationService = ns
+}
+
+// SetPropagationService sets the propagation service for propagating status to parent systems
+func (s *DependencyService) SetPropagationService(ps *StatusPropagationService) {
+	s.propagationService = ps
 }
 
 // CreateDependency creates a new dependency for a system
@@ -163,14 +169,38 @@ func (s *DependencyService) UpdateDependencyStatus(ctx context.Context, id int64
 		go s.notificationService.NotifyStatusChange(ctx, log)
 	}
 
+	// Propagate status change to parent system
+	if s.propagationService != nil && oldStatus != newStatus {
+		if _, err := s.propagationService.PropagateStatusToSystem(ctx, dep.SystemID); err != nil {
+			fmt.Printf("failed to propagate status to system %d: %v\n", dep.SystemID, err)
+		}
+	}
+
 	return dep, nil
 }
 
 // DeleteDependency removes a dependency
 func (s *DependencyService) DeleteDependency(ctx context.Context, id int64) error {
+	// Get the dependency first to know the system ID for propagation
+	var systemID int64
+	if s.propagationService != nil {
+		dep, err := s.depRepo.GetByID(ctx, id)
+		if err == nil && dep != nil {
+			systemID = dep.SystemID
+		}
+	}
+
 	if err := s.depRepo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete dependency: %w", err)
 	}
+
+	// Propagate status change to parent system (system may recover)
+	if s.propagationService != nil && systemID > 0 {
+		if _, err := s.propagationService.PropagateStatusToSystem(ctx, systemID); err != nil {
+			fmt.Printf("failed to propagate status to system %d after dependency deletion: %v\n", systemID, err)
+		}
+	}
+
 	return nil
 }
 
