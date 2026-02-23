@@ -198,7 +198,7 @@ class StatusIncidentClient
      */
     public function getSystemAnalytics(int $systemId, string $period = '24h'): array
     {
-        return $this->request('GET', "/systems/{$systemId}/analytics", ['period' => $period]);
+        return $this->request('GET', "/systems/{$systemId}/analytics", null, ['period' => $period]);
     }
 
     /**
@@ -206,7 +206,7 @@ class StatusIncidentClient
      */
     public function getSystemSla(int $systemId, string $period = 'monthly'): array
     {
-        return $this->request('GET', "/systems/{$systemId}/sla", ['period' => $period]);
+        return $this->request('GET', "/systems/{$systemId}/sla", null, ['period' => $period]);
     }
 
     // ==================== Dependencies API ====================
