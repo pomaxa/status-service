@@ -107,7 +107,7 @@ func (c *Checker) validateURL(rawURL string) error {
 
 	ips, err := net.LookupIP(host)
 	if err != nil {
-		return nil
+		return ErrBlockedHost
 	}
 
 	for _, ip := range ips {

@@ -650,7 +650,7 @@ func validateWebhookURL(rawURL string) error {
 
 	ips, err := net.LookupIP(host)
 	if err != nil {
-		return nil
+		return errBlockedWebhookHost
 	}
 
 	for _, ip := range ips {

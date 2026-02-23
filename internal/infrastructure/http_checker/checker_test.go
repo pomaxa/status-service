@@ -2,8 +2,10 @@ package http_checker
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -436,10 +438,10 @@ func TestCheckWithConfig_FullIntegration(t *testing.T) {
 
 	checker := NewWithOptions(5*time.Second, true)
 	result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
-		URL:      server.URL,
-		Method:   "POST",
-		Headers:  map[string]string{"Authorization": "Bearer secret"},
-		Body:     `{"check": "full"}`,
+		URL:          server.URL,
+		Method:       "POST",
+		Headers:      map[string]string{"Authorization": "Bearer secret"},
+		Body:         `{"check": "full"}`,
 		ExpectStatus: "200",
 		ExpectBody:   `"healthy":\s*true`,
 	})
@@ -449,5 +451,16 @@ func TestCheckWithConfig_FullIntegration(t *testing.T) {
 	}
 	if result.StatusCode != 200 {
 		t.Errorf("expected statusCode=200, got %d", result.StatusCode)
+	}
+}
+
+func TestValidateURL_BlocksOnDNSResolutionFailure(t *testing.T) {
+	checker := New(5 * time.Second)
+	// Use an invalid hostname label (>63 chars) so lookup fails deterministically.
+	host := strings.Repeat("a", 64) + ".invalid"
+
+	err := checker.validateURL("https://" + host + "/health")
+	if !errors.Is(err, ErrBlockedHost) {
+		t.Fatalf("expected blocked host error on DNS failure, got %v", err)
 	}
 }

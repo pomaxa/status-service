@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"status-incident/internal/domain"
 	"strings"
 	"testing"
@@ -13,10 +14,10 @@ func TestNotificationService_formatSlackPayload(t *testing.T) {
 	s := &NotificationService{}
 
 	tests := []struct {
-		name           string
-		payload        *domain.NotificationPayload
-		expectedText   string
-		expectedColor  string
+		name          string
+		payload       *domain.NotificationPayload
+		expectedText  string
+		expectedColor string
 	}{
 		{
 			name: "green status",
@@ -203,10 +204,10 @@ func TestNotificationService_formatTelegramPayload(t *testing.T) {
 	s := &NotificationService{}
 
 	tests := []struct {
-		name          string
-		webhookURL    string
-		payload       *domain.NotificationPayload
-		expectedText  string
+		name           string
+		webhookURL     string
+		payload        *domain.NotificationPayload
+		expectedText   string
 		expectedChatID string
 	}{
 		{
@@ -296,10 +297,10 @@ func TestNotificationService_formatTeamsPayload(t *testing.T) {
 	s := &NotificationService{}
 
 	tests := []struct {
-		name           string
-		payload        *domain.NotificationPayload
-		expectedText   string
-		expectedColor  string
+		name          string
+		payload       *domain.NotificationPayload
+		expectedText  string
+		expectedColor string
 	}{
 		{
 			name: "green status",
@@ -376,9 +377,9 @@ func TestNotificationService_formatSlackSLABreach(t *testing.T) {
 	s := &NotificationService{}
 
 	payload := &domain.SLABreachPayload{
-		Event:     domain.EventSLABreach,
-		Timestamp: time.Now(),
-		System:    &domain.SystemInfo{ID: 1, Name: "API"},
+		Event:       domain.EventSLABreach,
+		Timestamp:   time.Now(),
+		System:      &domain.SystemInfo{ID: 1, Name: "API"},
 		BreachType:  "uptime",
 		SLATarget:   99.9,
 		ActualValue: 98.5,
@@ -856,5 +857,15 @@ func TestNotificationService_DependencyOnly(t *testing.T) {
 	text := result["text"].(string)
 	if !strings.Contains(text, "PostgreSQL") {
 		t.Errorf("text should contain dependency name, got %q", text)
+	}
+}
+
+func TestValidateWebhookURL_BlocksOnDNSResolutionFailure(t *testing.T) {
+	// Use an invalid hostname label (>63 chars) so lookup fails deterministically.
+	host := strings.Repeat("a", 64) + ".invalid"
+
+	err := validateWebhookURL("https://" + host + "/webhook")
+	if !errors.Is(err, errBlockedWebhookHost) {
+		t.Fatalf("expected blocked host error on DNS failure, got %v", err)
 	}
 }
