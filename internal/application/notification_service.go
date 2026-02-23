@@ -4,13 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"status-incident/internal/domain"
+)
+
+var (
+	errBlockedWebhookHost = errors.New("webhook URL targets a blocked host")
 )
 
 // NotificationService handles sending notifications via webhooks
@@ -142,21 +149,22 @@ func (s *NotificationService) sendNotification(webhook *domain.Webhook, payload 
 		return
 	}
 
-	url := webhook.URL
-	// For Telegram, we need to modify the URL
+	targetURL := webhook.URL
 	if webhook.Type == domain.WebhookTypeTelegram {
-		// URL format: https://api.telegram.org/bot{token}/sendMessage
-		// or just the token, and we construct the URL
-		if !strings.Contains(url, "api.telegram.org") {
-			// Assume it's token:chatid format
-			parts := strings.SplitN(url, ":", 2)
+		if !strings.Contains(targetURL, "api.telegram.org") {
+			parts := strings.SplitN(targetURL, ":", 2)
 			if len(parts) == 2 {
-				url = fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", parts[0])
+				targetURL = fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", parts[0])
 			}
 		}
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err := validateWebhookURL(targetURL); err != nil {
+		logError("Blocked webhook %s: %v", webhook.Name, err)
+		return
+	}
+
+	req, err := http.NewRequest("POST", targetURL, bytes.NewBuffer(body))
 	if err != nil {
 		logError("Failed to create request for webhook %s: %v", webhook.Name, err)
 		return
@@ -458,17 +466,22 @@ func (s *NotificationService) sendSLABreachNotification(webhook *domain.Webhook,
 		return
 	}
 
-	url := webhook.URL
+	targetURL := webhook.URL
 	if webhook.Type == domain.WebhookTypeTelegram {
-		if !strings.Contains(url, "api.telegram.org") {
-			parts := strings.SplitN(url, ":", 2)
+		if !strings.Contains(targetURL, "api.telegram.org") {
+			parts := strings.SplitN(targetURL, ":", 2)
 			if len(parts) == 2 {
-				url = fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", parts[0])
+				targetURL = fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", parts[0])
 			}
 		}
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err := validateWebhookURL(targetURL); err != nil {
+		logError("Blocked webhook %s: %v", webhook.Name, err)
+		return
+	}
+
+	req, err := http.NewRequest("POST", targetURL, bytes.NewBuffer(body))
 	if err != nil {
 		logError("Failed to create request for webhook %s: %v", webhook.Name, err)
 		return
@@ -579,4 +592,72 @@ func (s *NotificationService) formatTeamsSLABreach(payload *domain.SLABreachPayl
 
 func logError(format string, args ...interface{}) {
 	log.Printf("[WEBHOOK ERROR] "+format, args...)
+}
+
+// isPrivateIP checks if an IP address is private/internal
+func isPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+
+	privateRanges := []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"169.254.0.0/16",
+		"127.0.0.0/8",
+		"::1/128",
+		"fc00::/7",
+		"fe80::/10",
+	}
+
+	for _, cidr := range privateRanges {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// validateWebhookURL checks if a webhook URL is safe to access
+func validateWebhookURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return err
+	}
+
+	host := parsed.Hostname()
+
+	if host == "localhost" || host == "" {
+		return errBlockedWebhookHost
+	}
+
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if isPrivateIP(ip) {
+			return errBlockedWebhookHost
+		}
+		return nil
+	}
+
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return nil
+	}
+
+	for _, ip := range ips {
+		if isPrivateIP(ip) {
+			return errBlockedWebhookHost
+		}
+	}
+
+	return nil
 }

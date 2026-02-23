@@ -1,28 +1,114 @@
 package http
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
+	"html"
 	"net/http"
 	"status-incident/internal/domain"
 	"strings"
+	"sync"
+	"time"
 )
+
+// Session represents an authenticated session
+type Session struct {
+	Username  string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// SessionStore manages user sessions securely
+type SessionStore struct {
+	mu       sync.RWMutex
+	sessions map[string]*Session
+}
+
+// NewSessionStore creates a new session store
+func NewSessionStore() *SessionStore {
+	store := &SessionStore{
+		sessions: make(map[string]*Session),
+	}
+	go store.cleanup()
+	return store
+}
+
+// Create creates a new session and returns the token
+func (s *SessionStore) Create(username string, duration time.Duration) (string, error) {
+	token := make([]byte, 32)
+	if _, err := rand.Read(token); err != nil {
+		return "", err
+	}
+	tokenStr := hex.EncodeToString(token)
+
+	s.mu.Lock()
+	s.sessions[tokenStr] = &Session{
+		Username:  username,
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(duration),
+	}
+	s.mu.Unlock()
+
+	return tokenStr, nil
+}
+
+// Get retrieves a session by token
+func (s *SessionStore) Get(token string) *Session {
+	s.mu.RLock()
+	session, exists := s.sessions[token]
+	s.mu.RUnlock()
+
+	if !exists {
+		return nil
+	}
+	if time.Now().After(session.ExpiresAt) {
+		s.Delete(token)
+		return nil
+	}
+	return session
+}
+
+// Delete removes a session
+func (s *SessionStore) Delete(token string) {
+	s.mu.Lock()
+	delete(s.sessions, token)
+	s.mu.Unlock()
+}
+
+// cleanup periodically removes expired sessions
+func (s *SessionStore) cleanup() {
+	ticker := time.NewTicker(10 * time.Minute)
+	for range ticker.C {
+		s.mu.Lock()
+		now := time.Now()
+		for token, session := range s.sessions {
+			if now.After(session.ExpiresAt) {
+				delete(s.sessions, token)
+			}
+		}
+		s.mu.Unlock()
+	}
+}
 
 // AuthMiddleware provides authentication middleware
 type AuthMiddleware struct {
-	enabled    bool
-	username   string
-	password   string
-	apiKeyRepo domain.APIKeyRepository
+	enabled      bool
+	username     string
+	password     string
+	apiKeyRepo   domain.APIKeyRepository
+	sessionStore *SessionStore
 }
 
 // NewAuthMiddleware creates a new auth middleware
 func NewAuthMiddleware(enabled bool, username, password string, apiKeyRepo domain.APIKeyRepository) *AuthMiddleware {
 	return &AuthMiddleware{
-		enabled:    enabled,
-		username:   username,
-		password:   password,
-		apiKeyRepo: apiKeyRepo,
+		enabled:      enabled,
+		username:     username,
+		password:     password,
+		apiKeyRepo:   apiKeyRepo,
+		sessionStore: NewSessionStore(),
 	}
 }
 
@@ -187,33 +273,18 @@ func (m *AuthMiddleware) validateAPIKey(r *http.Request, key string) *domain.Use
 	}
 }
 
-// validateSession validates a session token (simple implementation)
+// validateSession validates a session token using the session store
 func (m *AuthMiddleware) validateSession(sessionToken string) *domain.User {
-	// For simplicity, session token is just base64(username:password)
-	// In production, use proper session management
-	decoded, err := base64.StdEncoding.DecodeString(sessionToken)
-	if err != nil {
+	session := m.sessionStore.Get(sessionToken)
+	if session == nil {
 		return nil
 	}
 
-	parts := strings.SplitN(string(decoded), ":", 2)
-	if len(parts) != 2 {
-		return nil
+	return &domain.User{
+		Username: session.Username,
+		IsAPIKey: false,
+		Scopes:   []string{"admin"},
 	}
-
-	username, password := parts[0], parts[1]
-	usernameMatch := subtle.ConstantTimeCompare([]byte(username), []byte(m.username)) == 1
-	passwordMatch := subtle.ConstantTimeCompare([]byte(password), []byte(m.password)) == 1
-
-	if usernameMatch && passwordMatch {
-		return &domain.User{
-			Username: username,
-			IsAPIKey: false,
-			Scopes:   []string{"admin"},
-		}
-	}
-
-	return nil
 }
 
 // LoginHandler handles login form submission
@@ -236,22 +307,26 @@ func (m *AuthMiddleware) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	passwordMatch := subtle.ConstantTimeCompare([]byte(password), []byte(m.password)) == 1
 
 	if usernameMatch && passwordMatch {
-		// Set session cookie
-		sessionToken := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+		// Create secure random session token
+		sessionToken, err := m.sessionStore.Create(username, 7*24*time.Hour)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		// Set session cookie with security flags
 		http.SetCookie(w, &http.Cookie{
 			Name:     "session",
 			Value:    sessionToken,
 			Path:     "/",
 			HttpOnly: true,
+			Secure:   r.TLS != nil,
 			SameSite: http.SameSiteStrictMode,
 			MaxAge:   86400 * 7, // 7 days
 		})
 
-		// Redirect to dashboard
-		redirect := r.URL.Query().Get("redirect")
-		if redirect == "" {
-			redirect = "/"
-		}
+		// Validate redirect URL to prevent open redirect attacks
+		redirect := m.sanitizeRedirectURL(r.URL.Query().Get("redirect"))
 		http.Redirect(w, r, redirect, http.StatusSeeOther)
 		return
 	}
@@ -259,13 +334,44 @@ func (m *AuthMiddleware) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	m.renderLoginPage(w, "Invalid username or password")
 }
 
+// sanitizeRedirectURL validates and sanitizes the redirect URL to prevent open redirect attacks
+func (m *AuthMiddleware) sanitizeRedirectURL(redirect string) string {
+	if redirect == "" {
+		return "/"
+	}
+
+	// Only allow relative paths that start with /
+	if !strings.HasPrefix(redirect, "/") {
+		return "/"
+	}
+
+	// Prevent protocol-relative URLs (//evil.com)
+	if strings.HasPrefix(redirect, "//") {
+		return "/"
+	}
+
+	// Prevent backslash tricks
+	if strings.Contains(redirect, "\\") {
+		return "/"
+	}
+
+	return redirect
+}
+
 // LogoutHandler handles logout
 func (m *AuthMiddleware) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	// Delete session from store
+	if cookie, err := r.Cookie("session"); err == nil {
+		m.sessionStore.Delete(cookie.Value)
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session",
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 	})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -276,7 +382,7 @@ func (m *AuthMiddleware) renderLoginPage(w http.ResponseWriter, errorMsg string)
 
 	errorHTML := ""
 	if errorMsg != "" {
-		errorHTML = `<div class="error">` + errorMsg + `</div>`
+		errorHTML = `<div class="error">` + html.EscapeString(errorMsg) + `</div>`
 	}
 
 	html := `<!DOCTYPE html>

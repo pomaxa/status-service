@@ -136,24 +136,24 @@ func TestHashAPIKey(t *testing.T) {
 
 func TestCompareAPIKey(t *testing.T) {
 	tests := []struct {
-		name     string
-		provided string
-		stored   string
-		expected bool
+		name       string
+		provided   string
+		storedHash string
+		expected   bool
 	}{
-		{"matching keys", "sk_abc123", "sk_abc123", true},
-		{"different keys", "sk_abc123", "sk_xyz789", false},
-		{"empty provided", "", "sk_abc123", false},
-		{"empty stored", "sk_abc123", "", false},
-		{"both empty", "", "", true},
+		{"matching keys", "sk_abc123", HashAPIKey("sk_abc123"), true},
+		{"different keys", "sk_abc123", HashAPIKey("sk_xyz789"), false},
+		{"empty provided", "", HashAPIKey("sk_abc123"), false},
+		{"empty stored hash", "sk_abc123", "", false},
+		{"both empty", "", HashAPIKey(""), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CompareAPIKey(tt.provided, tt.stored)
+			result := CompareAPIKey(tt.provided, tt.storedHash)
 			if result != tt.expected {
-				t.Errorf("CompareAPIKey(%q, %q) = %v, want %v",
-					tt.provided, tt.stored, result, tt.expected)
+				t.Errorf("CompareAPIKey(%q, storedHash) = %v, want %v",
+					tt.provided, result, tt.expected)
 			}
 		})
 	}

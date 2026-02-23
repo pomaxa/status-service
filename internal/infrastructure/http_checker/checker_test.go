@@ -30,7 +30,7 @@ func TestCheck_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	healthy, latency, err := checker.Check(context.Background(), server.URL)
 
 	if err != nil {
@@ -50,7 +50,7 @@ func TestCheck_Failure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	healthy, _, err := checker.Check(context.Background(), server.URL)
 
 	if err != nil {
@@ -83,7 +83,7 @@ func TestCheckWithConfig_Methods(t *testing.T) {
 			}))
 			defer server.Close()
 
-			checker := New(5 * time.Second)
+			checker := NewWithOptions(5*time.Second, true)
 			result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 				URL:    server.URL,
 				Method: tt.method,
@@ -107,7 +107,7 @@ func TestCheckWithConfig_CustomHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 		URL:    server.URL,
 		Method: "GET",
@@ -143,7 +143,7 @@ func TestCheckWithConfig_RequestBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 		URL:    server.URL,
 		Method: "POST",
@@ -169,7 +169,7 @@ func TestCheckWithConfig_CustomContentType(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 		URL:    server.URL,
 		Method: "POST",
@@ -309,7 +309,7 @@ func TestCheckWithConfig_ExpectStatus(t *testing.T) {
 			}))
 			defer server.Close()
 
-			checker := New(5 * time.Second)
+			checker := NewWithOptions(5*time.Second, true)
 			result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 				URL:          server.URL,
 				ExpectStatus: tt.expectStatus,
@@ -346,7 +346,7 @@ func TestCheckWithConfig_ExpectBody(t *testing.T) {
 			}))
 			defer server.Close()
 
-			checker := New(5 * time.Second)
+			checker := NewWithOptions(5*time.Second, true)
 			result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 				URL:        server.URL,
 				ExpectBody: tt.expectBody,
@@ -360,7 +360,7 @@ func TestCheckWithConfig_ExpectBody(t *testing.T) {
 }
 
 func TestCheckWithConfig_NetworkError(t *testing.T) {
-	checker := New(1 * time.Second)
+	checker := NewWithOptions(1*time.Second, true)
 	result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 		URL: "http://localhost:99999", // Invalid port
 	})
@@ -395,7 +395,7 @@ func TestCheckWithConfig_ContextCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(10 * time.Second)
+	checker := NewWithOptions(10*time.Second, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
@@ -434,7 +434,7 @@ func TestCheckWithConfig_FullIntegration(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 		URL:      server.URL,
 		Method:   "POST",

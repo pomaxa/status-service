@@ -42,20 +42,23 @@ func (r *APIKeyRepo) Create(ctx context.Context, key *domain.APIKey) error {
 	return nil
 }
 
-// GetByKey retrieves API key by the key value
+// GetByKey retrieves API key by the key value using hash comparison for security
 func (r *APIKeyRepo) GetByKey(ctx context.Context, keyValue string) (*domain.APIKey, error) {
+	keyHash := domain.HashAPIKey(keyValue)
+
 	var key domain.APIKey
 	var scopesJSON string
 	var expiresAt, lastUsed sql.NullTime
+	var storedKeyValue string
 
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, name, key_value, key_hash, scopes, enabled, expires_at, last_used, created_at
 		FROM api_keys
-		WHERE key_value = ?
-	`, keyValue).Scan(
+		WHERE key_hash = ?
+	`, keyHash).Scan(
 		&key.ID,
 		&key.Name,
-		&key.Key,
+		&storedKeyValue,
 		&key.KeyHash,
 		&scopesJSON,
 		&key.Enabled,
