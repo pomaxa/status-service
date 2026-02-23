@@ -1,0 +1,11 @@
+# Gemfile for Status Incident Ruby Client
+
+source 'https://rubygems.org'
+
+# Required for the client
+gem 'httparty', '~> 0.21'
+
+# Optional: For Rails integration examples
+# gem 'rails', '~> 7.0'
+# gem 'sidekiq', '~> 7.0'
+# gem 'redis', '~> 5.0'
