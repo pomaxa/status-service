@@ -126,11 +126,14 @@ func TestHashAPIKey(t *testing.T) {
 		t.Errorf("expected hash length 64, got %d", len(hash1))
 	}
 
-	// Each call generates different hash (random component)
-	// This is expected behavior based on the implementation
-	if hash1 == hash2 {
-		// Note: The current implementation generates random hash each time
-		// which is actually a design issue but we test what exists
+	// Hashing must be deterministic for stable lookups and comparisons.
+	if hash1 != hash2 {
+		t.Errorf("expected deterministic hash, got %q and %q", hash1, hash2)
+	}
+
+	expected := "512f95374f749e3b0ae959f655983348a093dccb94fa2a2c8d5a3b38b89d4398"
+	if hash1 != expected {
+		t.Errorf("HashAPIKey(%q) = %q, want %q", key, hash1, expected)
 	}
 }
 

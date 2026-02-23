@@ -134,6 +134,48 @@ func TestAPIKeyRepo_GetByKey_NotFound(t *testing.T) {
 	}
 }
 
+func TestAPIKeyRepo_GetByKey_LegacyRandomHashBackfill(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewAPIKeyRepo(db)
+	ctx := context.Background()
+
+	keyValue := "sk_legacy_key_backfill"
+	legacyHash := "legacy-random-hash-that-does-not-match"
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO api_keys (name, key_value, key_hash, scopes, enabled)
+		VALUES (?, ?, ?, ?, ?)
+	`, "Legacy Key", keyValue, legacyHash, `["read"]`, true); err != nil {
+		t.Fatalf("failed to seed legacy key: %v", err)
+	}
+
+	retrieved, err := repo.GetByKey(ctx, keyValue)
+	if err != nil {
+		t.Fatalf("GetByKey() error = %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("GetByKey() returned nil for legacy key")
+	}
+
+	expectedHash := domain.HashAPIKey(keyValue)
+	if retrieved.KeyHash != expectedHash {
+		t.Errorf("retrieved KeyHash = %s, want %s", retrieved.KeyHash, expectedHash)
+	}
+
+	var storedHash string
+	if err := db.QueryRowContext(ctx, `
+		SELECT key_hash
+		FROM api_keys
+		WHERE key_value = ?
+	`, keyValue).Scan(&storedHash); err != nil {
+		t.Fatalf("failed to read stored hash: %v", err)
+	}
+	if storedHash != expectedHash {
+		t.Errorf("stored key_hash = %s, want %s", storedHash, expectedHash)
+	}
+}
+
 func TestAPIKeyRepo_GetAll(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

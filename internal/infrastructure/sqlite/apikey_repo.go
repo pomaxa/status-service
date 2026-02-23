@@ -46,16 +46,57 @@ func (r *APIKeyRepo) Create(ctx context.Context, key *domain.APIKey) error {
 func (r *APIKeyRepo) GetByKey(ctx context.Context, keyValue string) (*domain.APIKey, error) {
 	keyHash := domain.HashAPIKey(keyValue)
 
+	key, err := r.getByKeyHash(ctx, keyHash)
+	if err != nil {
+		return nil, err
+	}
+	if key != nil {
+		return key, nil
+	}
+
+	// Compatibility path for legacy records created before HashAPIKey became deterministic.
+	key, err = r.getByKeyValue(ctx, keyValue)
+	if err != nil || key == nil {
+		return key, err
+	}
+
+	// Opportunistically migrate legacy random hashes to SHA-256 for future hash lookups.
+	if key.KeyHash != keyHash {
+		if _, err := r.db.ExecContext(ctx, `
+			UPDATE api_keys
+			SET key_hash = ?
+			WHERE id = ? AND key_hash != ?
+		`, keyHash, key.ID, keyHash); err == nil {
+			key.KeyHash = keyHash
+		}
+	}
+
+	return key, nil
+}
+
+func (r *APIKeyRepo) getByKeyHash(ctx context.Context, keyHash string) (*domain.APIKey, error) {
+	return scanAPIKeyRow(r.db.QueryRowContext(ctx, `
+		SELECT id, name, key_value, key_hash, scopes, enabled, expires_at, last_used, created_at
+		FROM api_keys
+		WHERE key_hash = ?
+	`, keyHash))
+}
+
+func (r *APIKeyRepo) getByKeyValue(ctx context.Context, keyValue string) (*domain.APIKey, error) {
+	return scanAPIKeyRow(r.db.QueryRowContext(ctx, `
+		SELECT id, name, key_value, key_hash, scopes, enabled, expires_at, last_used, created_at
+		FROM api_keys
+		WHERE key_value = ?
+	`, keyValue))
+}
+
+func scanAPIKeyRow(row *sql.Row) (*domain.APIKey, error) {
 	var key domain.APIKey
 	var scopesJSON string
 	var expiresAt, lastUsed sql.NullTime
 	var storedKeyValue string
 
-	err := r.db.QueryRowContext(ctx, `
-		SELECT id, name, key_value, key_hash, scopes, enabled, expires_at, last_used, created_at
-		FROM api_keys
-		WHERE key_hash = ?
-	`, keyHash).Scan(
+	err := row.Scan(
 		&key.ID,
 		&key.Name,
 		&storedKeyValue,
