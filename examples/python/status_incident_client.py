@@ -185,7 +185,11 @@ class StatusIncidentClient:
         period: str = "24h"
     ) -> Dict:
         """Get system analytics."""
-        return self._request("GET", f"/systems/{system_id}/analytics", {"period": period})
+        return self._request(
+            "GET",
+            f"/systems/{system_id}/analytics",
+            params={"period": period}
+        )
 
     def get_system_sla(
         self,
@@ -193,7 +197,11 @@ class StatusIncidentClient:
         period: str = "monthly"
     ) -> Dict:
         """Get system SLA status."""
-        return self._request("GET", f"/systems/{system_id}/sla", {"period": period})
+        return self._request(
+            "GET",
+            f"/systems/{system_id}/sla",
+            params={"period": period}
+        )
 
     # ==================== Dependencies API ====================
 
@@ -485,11 +493,11 @@ class StatusIncidentClient:
 
     def get_analytics(self, period: str = "24h") -> Dict:
         """Get overall analytics."""
-        return self._request("GET", "/analytics", {"period": period})
+        return self._request("GET", "/analytics", params={"period": period})
 
     def get_logs(self, limit: int = 100) -> List[Dict]:
         """Get change logs."""
-        return self._request("GET", "/logs", {"limit": limit})
+        return self._request("GET", "/logs", params={"limit": limit})
 
 
 # ==================== Example Usage ====================
