@@ -2,8 +2,10 @@ package http_checker
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +32,7 @@ func TestCheck_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	healthy, latency, err := checker.Check(context.Background(), server.URL)
 
 	if err != nil {
@@ -50,7 +52,7 @@ func TestCheck_Failure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	healthy, _, err := checker.Check(context.Background(), server.URL)
 
 	if err != nil {
@@ -83,7 +85,7 @@ func TestCheckWithConfig_Methods(t *testing.T) {
 			}))
 			defer server.Close()
 
-			checker := New(5 * time.Second)
+			checker := NewWithOptions(5*time.Second, true)
 			result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 				URL:    server.URL,
 				Method: tt.method,
@@ -107,7 +109,7 @@ func TestCheckWithConfig_CustomHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 		URL:    server.URL,
 		Method: "GET",
@@ -143,7 +145,7 @@ func TestCheckWithConfig_RequestBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 		URL:    server.URL,
 		Method: "POST",
@@ -169,7 +171,7 @@ func TestCheckWithConfig_CustomContentType(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 		URL:    server.URL,
 		Method: "POST",
@@ -309,7 +311,7 @@ func TestCheckWithConfig_ExpectStatus(t *testing.T) {
 			}))
 			defer server.Close()
 
-			checker := New(5 * time.Second)
+			checker := NewWithOptions(5*time.Second, true)
 			result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 				URL:          server.URL,
 				ExpectStatus: tt.expectStatus,
@@ -346,7 +348,7 @@ func TestCheckWithConfig_ExpectBody(t *testing.T) {
 			}))
 			defer server.Close()
 
-			checker := New(5 * time.Second)
+			checker := NewWithOptions(5*time.Second, true)
 			result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 				URL:        server.URL,
 				ExpectBody: tt.expectBody,
@@ -360,7 +362,7 @@ func TestCheckWithConfig_ExpectBody(t *testing.T) {
 }
 
 func TestCheckWithConfig_NetworkError(t *testing.T) {
-	checker := New(1 * time.Second)
+	checker := NewWithOptions(1*time.Second, true)
 	result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
 		URL: "http://localhost:99999", // Invalid port
 	})
@@ -395,7 +397,7 @@ func TestCheckWithConfig_ContextCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(10 * time.Second)
+	checker := NewWithOptions(10*time.Second, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
@@ -434,12 +436,12 @@ func TestCheckWithConfig_FullIntegration(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := New(5 * time.Second)
+	checker := NewWithOptions(5*time.Second, true)
 	result := checker.CheckWithConfig(context.Background(), domain.HeartbeatConfig{
-		URL:      server.URL,
-		Method:   "POST",
-		Headers:  map[string]string{"Authorization": "Bearer secret"},
-		Body:     `{"check": "full"}`,
+		URL:          server.URL,
+		Method:       "POST",
+		Headers:      map[string]string{"Authorization": "Bearer secret"},
+		Body:         `{"check": "full"}`,
 		ExpectStatus: "200",
 		ExpectBody:   `"healthy":\s*true`,
 	})
@@ -449,5 +451,16 @@ func TestCheckWithConfig_FullIntegration(t *testing.T) {
 	}
 	if result.StatusCode != 200 {
 		t.Errorf("expected statusCode=200, got %d", result.StatusCode)
+	}
+}
+
+func TestValidateURL_BlocksOnDNSResolutionFailure(t *testing.T) {
+	checker := New(5 * time.Second)
+	// Use an invalid hostname label (>63 chars) so lookup fails deterministically.
+	host := strings.Repeat("a", 64) + ".invalid"
+
+	err := checker.validateURL("https://" + host + "/health")
+	if !errors.Is(err, ErrBlockedHost) {
+		t.Fatalf("expected blocked host error on DNS failure, got %v", err)
 	}
 }

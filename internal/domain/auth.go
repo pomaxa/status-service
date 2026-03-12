@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"time"
@@ -61,18 +62,16 @@ func GenerateAPIKey() (string, error) {
 	return "sk_" + hex.EncodeToString(bytes), nil
 }
 
-// HashAPIKey creates a simple hash of the API key for storage
+// HashAPIKey creates a SHA-256 hash of the API key for secure storage
 func HashAPIKey(key string) string {
-	// Simple hash using first/last chars + length for demo
-	// In production, use proper hashing like SHA-256
-	bytes := make([]byte, 32)
-	rand.Read(bytes)
-	return hex.EncodeToString(bytes)
+	hash := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(hash[:])
 }
 
 // CompareAPIKey securely compares API key with stored hash
-func CompareAPIKey(provided, stored string) bool {
-	return subtle.ConstantTimeCompare([]byte(provided), []byte(stored)) == 1
+func CompareAPIKey(provided, storedHash string) bool {
+	providedHash := HashAPIKey(provided)
+	return subtle.ConstantTimeCompare([]byte(providedHash), []byte(storedHash)) == 1
 }
 
 // User represents an authenticated user context

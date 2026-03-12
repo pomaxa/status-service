@@ -126,34 +126,37 @@ func TestHashAPIKey(t *testing.T) {
 		t.Errorf("expected hash length 64, got %d", len(hash1))
 	}
 
-	// Each call generates different hash (random component)
-	// This is expected behavior based on the implementation
-	if hash1 == hash2 {
-		// Note: The current implementation generates random hash each time
-		// which is actually a design issue but we test what exists
+	// Hashing must be deterministic for stable lookups and comparisons.
+	if hash1 != hash2 {
+		t.Errorf("expected deterministic hash, got %q and %q", hash1, hash2)
+	}
+
+	expected := "512f95374f749e3b0ae959f655983348a093dccb94fa2a2c8d5a3b38b89d4398"
+	if hash1 != expected {
+		t.Errorf("HashAPIKey(%q) = %q, want %q", key, hash1, expected)
 	}
 }
 
 func TestCompareAPIKey(t *testing.T) {
 	tests := []struct {
-		name     string
-		provided string
-		stored   string
-		expected bool
+		name       string
+		provided   string
+		storedHash string
+		expected   bool
 	}{
-		{"matching keys", "sk_abc123", "sk_abc123", true},
-		{"different keys", "sk_abc123", "sk_xyz789", false},
-		{"empty provided", "", "sk_abc123", false},
-		{"empty stored", "sk_abc123", "", false},
-		{"both empty", "", "", true},
+		{"matching keys", "sk_abc123", HashAPIKey("sk_abc123"), true},
+		{"different keys", "sk_abc123", HashAPIKey("sk_xyz789"), false},
+		{"empty provided", "", HashAPIKey("sk_abc123"), false},
+		{"empty stored hash", "sk_abc123", "", false},
+		{"both empty", "", HashAPIKey(""), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CompareAPIKey(tt.provided, tt.stored)
+			result := CompareAPIKey(tt.provided, tt.storedHash)
 			if result != tt.expected {
-				t.Errorf("CompareAPIKey(%q, %q) = %v, want %v",
-					tt.provided, tt.stored, result, tt.expected)
+				t.Errorf("CompareAPIKey(%q, storedHash) = %v, want %v",
+					tt.provided, result, tt.expected)
 			}
 		})
 	}

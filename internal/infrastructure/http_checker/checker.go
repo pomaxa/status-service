@@ -2,8 +2,11 @@ package http_checker
 
 import (
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,25 +15,108 @@ import (
 	"status-incident/internal/domain"
 )
 
+var (
+	// ErrBlockedHost is returned when a URL targets a blocked host
+	ErrBlockedHost = errors.New("access to internal/private IP addresses is not allowed")
+)
+
 // Checker implements domain.HealthChecker
 type Checker struct {
-	client *http.Client
+	client       *http.Client
+	allowPrivate bool
 }
 
-// New creates a new HTTP health checker
+// New creates a new HTTP health checker with SSRF protection enabled
 func New(timeout time.Duration) *Checker {
+	return NewWithOptions(timeout, false)
+}
+
+// NewWithOptions creates a new HTTP health checker with configurable options
+func NewWithOptions(timeout time.Duration, allowPrivate bool) *Checker {
 	return &Checker{
 		client: &http.Client{
 			Timeout: timeout,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				// Follow up to 10 redirects
 				if len(via) >= 10 {
 					return http.ErrUseLastResponse
 				}
 				return nil
 			},
 		},
+		allowPrivate: allowPrivate,
 	}
+}
+
+// isPrivateIP checks if an IP address is private/internal
+func isPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+
+	privateRanges := []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"169.254.0.0/16",
+		"127.0.0.0/8",
+		"::1/128",
+		"fc00::/7",
+		"fe80::/10",
+	}
+
+	for _, cidr := range privateRanges {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// validateURL checks if a URL is safe to access (not targeting internal resources)
+func (c *Checker) validateURL(rawURL string) error {
+	if c.allowPrivate {
+		return nil
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return err
+	}
+
+	host := parsed.Hostname()
+
+	if host == "localhost" || host == "" {
+		return ErrBlockedHost
+	}
+
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if isPrivateIP(ip) {
+			return ErrBlockedHost
+		}
+		return nil
+	}
+
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return ErrBlockedHost
+	}
+
+	for _, ip := range ips {
+		if isPrivateIP(ip) {
+			return ErrBlockedHost
+		}
+	}
+
+	return nil
 }
 
 // Check performs HTTP health check and returns healthy status and response time in milliseconds
@@ -42,6 +128,10 @@ func (c *Checker) Check(ctx context.Context, url string) (bool, int64, error) {
 
 // CheckWithConfig performs HTTP health check with advanced configuration
 func (c *Checker) CheckWithConfig(ctx context.Context, config domain.HeartbeatConfig) domain.HealthCheckResult {
+	if err := c.validateURL(config.URL); err != nil {
+		return domain.HealthCheckResult{Healthy: false, Error: err}
+	}
+
 	method := config.Method
 	if method == "" {
 		method = "GET"

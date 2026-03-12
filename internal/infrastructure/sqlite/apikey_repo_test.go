@@ -15,10 +15,11 @@ func TestAPIKeyRepo_Create(t *testing.T) {
 	repo := NewAPIKeyRepo(db)
 	ctx := context.Background()
 
+	keyValue := "sk_test_1234567890abcdef"
 	key := &domain.APIKey{
 		Name:    "Test API Key",
-		Key:     "sk_test_1234567890abcdef",
-		KeyHash: "hashed_value",
+		Key:     keyValue,
+		KeyHash: domain.HashAPIKey(keyValue),
 		Scopes:  []string{"read", "write"},
 		Enabled: true,
 	}
@@ -41,10 +42,11 @@ func TestAPIKeyRepo_Create_WithExpiry(t *testing.T) {
 	ctx := context.Background()
 
 	expiry := time.Now().Add(30 * 24 * time.Hour) // 30 days
+	keyValue := "sk_expiring_1234567890"
 	key := &domain.APIKey{
 		Name:      "Expiring Key",
-		Key:       "sk_expiring_1234567890",
-		KeyHash:   "hashed_value",
+		Key:       keyValue,
+		KeyHash:   domain.HashAPIKey(keyValue),
 		Scopes:    []string{"read"},
 		Enabled:   true,
 		ExpiresAt: &expiry,
@@ -57,6 +59,10 @@ func TestAPIKeyRepo_Create_WithExpiry(t *testing.T) {
 	retrieved, err := repo.GetByKey(ctx, key.Key)
 	if err != nil {
 		t.Fatalf("GetByKey() error = %v", err)
+	}
+
+	if retrieved == nil {
+		t.Fatal("GetByKey() returned nil")
 	}
 
 	if retrieved.ExpiresAt == nil {
@@ -72,10 +78,11 @@ func TestAPIKeyRepo_GetByKey(t *testing.T) {
 	ctx := context.Background()
 
 	keyValue := "sk_unique_key_123456"
+	keyHash := domain.HashAPIKey(keyValue)
 	key := &domain.APIKey{
 		Name:    "Get By Key Test",
 		Key:     keyValue,
-		KeyHash: "hash123",
+		KeyHash: keyHash,
 		Scopes:  []string{"read", "write", "admin"},
 		Enabled: true,
 	}
@@ -99,11 +106,8 @@ func TestAPIKeyRepo_GetByKey(t *testing.T) {
 	if retrieved.Name != key.Name {
 		t.Errorf("Name = %s, want %s", retrieved.Name, key.Name)
 	}
-	if retrieved.Key != keyValue {
-		t.Errorf("Key = %s, want %s", retrieved.Key, keyValue)
-	}
-	if retrieved.KeyHash != "hash123" {
-		t.Errorf("KeyHash = %s, want hash123", retrieved.KeyHash)
+	if retrieved.KeyHash != keyHash {
+		t.Errorf("KeyHash = %s, want %s", retrieved.KeyHash, keyHash)
 	}
 	if len(retrieved.Scopes) != 3 {
 		t.Errorf("Scopes count = %d, want 3", len(retrieved.Scopes))
@@ -130,6 +134,48 @@ func TestAPIKeyRepo_GetByKey_NotFound(t *testing.T) {
 	}
 }
 
+func TestAPIKeyRepo_GetByKey_LegacyRandomHashBackfill(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewAPIKeyRepo(db)
+	ctx := context.Background()
+
+	keyValue := "sk_legacy_key_backfill"
+	legacyHash := "legacy-random-hash-that-does-not-match"
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO api_keys (name, key_value, key_hash, scopes, enabled)
+		VALUES (?, ?, ?, ?, ?)
+	`, "Legacy Key", keyValue, legacyHash, `["read"]`, true); err != nil {
+		t.Fatalf("failed to seed legacy key: %v", err)
+	}
+
+	retrieved, err := repo.GetByKey(ctx, keyValue)
+	if err != nil {
+		t.Fatalf("GetByKey() error = %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("GetByKey() returned nil for legacy key")
+	}
+
+	expectedHash := domain.HashAPIKey(keyValue)
+	if retrieved.KeyHash != expectedHash {
+		t.Errorf("retrieved KeyHash = %s, want %s", retrieved.KeyHash, expectedHash)
+	}
+
+	var storedHash string
+	if err := db.QueryRowContext(ctx, `
+		SELECT key_hash
+		FROM api_keys
+		WHERE key_value = ?
+	`, keyValue).Scan(&storedHash); err != nil {
+		t.Fatalf("failed to read stored hash: %v", err)
+	}
+	if storedHash != expectedHash {
+		t.Errorf("stored key_hash = %s, want %s", storedHash, expectedHash)
+	}
+}
+
 func TestAPIKeyRepo_GetAll(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
@@ -152,7 +198,7 @@ func TestAPIKeyRepo_GetAll(t *testing.T) {
 		key := &domain.APIKey{
 			Name:    k.name,
 			Key:     k.key,
-			KeyHash: "hash",
+			KeyHash: domain.HashAPIKey(k.key),
 			Scopes:  k.scopes,
 			Enabled: true,
 		}
@@ -184,10 +230,11 @@ func TestAPIKeyRepo_Update(t *testing.T) {
 	repo := NewAPIKeyRepo(db)
 	ctx := context.Background()
 
+	keyValue := "sk_update_test"
 	key := &domain.APIKey{
 		Name:    "Original Name",
-		Key:     "sk_update_test",
-		KeyHash: "hash",
+		Key:     keyValue,
+		KeyHash: domain.HashAPIKey(keyValue),
 		Scopes:  []string{"read"},
 		Enabled: true,
 	}
@@ -234,10 +281,11 @@ func TestAPIKeyRepo_Delete(t *testing.T) {
 	repo := NewAPIKeyRepo(db)
 	ctx := context.Background()
 
+	keyValue := "sk_delete_test"
 	key := &domain.APIKey{
 		Name:    "To Delete",
-		Key:     "sk_delete_test",
-		KeyHash: "hash",
+		Key:     keyValue,
+		KeyHash: domain.HashAPIKey(keyValue),
 		Scopes:  []string{"read"},
 		Enabled: true,
 	}
@@ -266,10 +314,11 @@ func TestAPIKeyRepo_UpdateLastUsed(t *testing.T) {
 	repo := NewAPIKeyRepo(db)
 	ctx := context.Background()
 
+	keyValue := "sk_lastused_test"
 	key := &domain.APIKey{
 		Name:    "Last Used Test",
-		Key:     "sk_lastused_test",
-		KeyHash: "hash",
+		Key:     keyValue,
+		KeyHash: domain.HashAPIKey(keyValue),
 		Scopes:  []string{"read"},
 		Enabled: true,
 	}
@@ -303,11 +352,12 @@ func TestAPIKeyRepo_ScopesSerialization(t *testing.T) {
 	repo := NewAPIKeyRepo(db)
 	ctx := context.Background()
 
+	keyValue := "sk_scopes_test"
 	scopes := []string{"read", "write", "admin", "delete", "custom_scope"}
 	key := &domain.APIKey{
 		Name:    "Scopes Test",
-		Key:     "sk_scopes_test",
-		KeyHash: "hash",
+		Key:     keyValue,
+		KeyHash: domain.HashAPIKey(keyValue),
 		Scopes:  scopes,
 		Enabled: true,
 	}
@@ -345,20 +395,22 @@ func TestAPIKeyRepo_EnabledDisabled(t *testing.T) {
 	ctx := context.Background()
 
 	// Create enabled key
+	enabledKeyValue := "sk_enabled"
 	enabledKey := &domain.APIKey{
 		Name:    "Enabled Key",
-		Key:     "sk_enabled",
-		KeyHash: "hash",
+		Key:     enabledKeyValue,
+		KeyHash: domain.HashAPIKey(enabledKeyValue),
 		Scopes:  []string{"read"},
 		Enabled: true,
 	}
 	repo.Create(ctx, enabledKey)
 
 	// Create disabled key
+	disabledKeyValue := "sk_disabled"
 	disabledKey := &domain.APIKey{
 		Name:    "Disabled Key",
-		Key:     "sk_disabled",
-		KeyHash: "hash",
+		Key:     disabledKeyValue,
+		KeyHash: domain.HashAPIKey(disabledKeyValue),
 		Scopes:  []string{"read"},
 		Enabled: false,
 	}
@@ -384,11 +436,12 @@ func TestAPIKeyRepo_NullableFields(t *testing.T) {
 	repo := NewAPIKeyRepo(db)
 	ctx := context.Background()
 
+	keyValue := "sk_minimal"
 	// Create key without optional fields
 	key := &domain.APIKey{
 		Name:    "Minimal Key",
-		Key:     "sk_minimal",
-		KeyHash: "hash",
+		Key:     keyValue,
+		KeyHash: domain.HashAPIKey(keyValue),
 		Scopes:  []string{"read"},
 		Enabled: true,
 		// ExpiresAt is nil
@@ -419,10 +472,11 @@ func TestAPIKeyRepo_HasScope(t *testing.T) {
 	repo := NewAPIKeyRepo(db)
 	ctx := context.Background()
 
+	keyValue := "sk_scope_check"
 	key := &domain.APIKey{
 		Name:    "Scope Check",
-		Key:     "sk_scope_check",
-		KeyHash: "hash",
+		Key:     keyValue,
+		KeyHash: domain.HashAPIKey(keyValue),
 		Scopes:  []string{"read", "write"},
 		Enabled: true,
 	}
@@ -451,11 +505,12 @@ func TestAPIKeyRepo_HasScope_Admin(t *testing.T) {
 	repo := NewAPIKeyRepo(db)
 	ctx := context.Background()
 
+	keyValue := "sk_admin"
 	// Admin scope should grant access to all
 	key := &domain.APIKey{
 		Name:    "Admin Key",
-		Key:     "sk_admin",
-		KeyHash: "hash",
+		Key:     keyValue,
+		KeyHash: domain.HashAPIKey(keyValue),
 		Scopes:  []string{"admin"},
 		Enabled: true,
 	}
@@ -486,11 +541,12 @@ func TestAPIKeyRepo_IsExpired(t *testing.T) {
 	ctx := context.Background()
 
 	// Create expired key
+	expiredKeyValue := "sk_expired"
 	pastExpiry := time.Now().Add(-24 * time.Hour)
 	expiredKey := &domain.APIKey{
 		Name:      "Expired Key",
-		Key:       "sk_expired",
-		KeyHash:   "hash",
+		Key:       expiredKeyValue,
+		KeyHash:   domain.HashAPIKey(expiredKeyValue),
 		Scopes:    []string{"read"},
 		Enabled:   true,
 		ExpiresAt: &pastExpiry,
@@ -498,11 +554,12 @@ func TestAPIKeyRepo_IsExpired(t *testing.T) {
 	repo.Create(ctx, expiredKey)
 
 	// Create non-expired key
+	validKeyValue := "sk_valid"
 	futureExpiry := time.Now().Add(24 * time.Hour)
 	validKey := &domain.APIKey{
 		Name:      "Valid Key",
-		Key:       "sk_valid",
-		KeyHash:   "hash",
+		Key:       validKeyValue,
+		KeyHash:   domain.HashAPIKey(validKeyValue),
 		Scopes:    []string{"read"},
 		Enabled:   true,
 		ExpiresAt: &futureExpiry,
@@ -510,10 +567,11 @@ func TestAPIKeyRepo_IsExpired(t *testing.T) {
 	repo.Create(ctx, validKey)
 
 	// Create key without expiry
+	noExpiryKeyValue := "sk_no_expiry"
 	noExpiryKey := &domain.APIKey{
 		Name:    "No Expiry Key",
-		Key:     "sk_no_expiry",
-		KeyHash: "hash",
+		Key:     noExpiryKeyValue,
+		KeyHash: domain.HashAPIKey(noExpiryKeyValue),
 		Scopes:  []string{"read"},
 		Enabled: true,
 	}
@@ -554,10 +612,11 @@ func TestAPIKeyRepo_IsValid_DisabledKey(t *testing.T) {
 	repo := NewAPIKeyRepo(db)
 	ctx := context.Background()
 
+	keyValue := "sk_disabled_check"
 	key := &domain.APIKey{
 		Name:    "Disabled Key",
-		Key:     "sk_disabled_check",
-		KeyHash: "hash",
+		Key:     keyValue,
+		KeyHash: domain.HashAPIKey(keyValue),
 		Scopes:  []string{"read"},
 		Enabled: false,
 	}

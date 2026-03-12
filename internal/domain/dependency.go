@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ var (
 	ErrInvalidHeartbeatInterval = errors.New("heartbeat interval must be positive")
 	ErrInvalidHeartbeatMethod   = errors.New("invalid HTTP method")
 	ErrInvalidExpectStatus      = errors.New("invalid expected status code format")
+	ErrBlockedHeartbeatURL      = errors.New("heartbeat URL cannot target private/internal addresses")
 )
 
 // HeartbeatConfig contains all configuration for health checks
@@ -90,17 +92,68 @@ func (d *Dependency) SetHeartbeat(heartbeatURL string, intervalSeconds int) erro
 	})
 }
 
-// SetHeartbeatConfig configures automatic health checking with advanced options
-func (d *Dependency) SetHeartbeatConfig(config HeartbeatConfig) error {
-	config.URL = strings.TrimSpace(config.URL)
+// isPrivateIPDep checks if an IP address is private/internal (SSRF protection)
+func isPrivateIPDep(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
 
-	// Validate URL
-	parsed, err := url.Parse(config.URL)
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+
+	privateRanges := []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"169.254.0.0/16",
+		"127.0.0.0/8",
+		"::1/128",
+		"fc00::/7",
+		"fe80::/10",
+	}
+
+	for _, cidr := range privateRanges {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// validateHeartbeatURL validates URL for SSRF protection
+func validateHeartbeatURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return ErrInvalidHeartbeatURL
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return ErrInvalidHeartbeatURL
+	}
+
+	host := parsed.Hostname()
+	if host == "localhost" || host == "" {
+		return ErrBlockedHeartbeatURL
+	}
+
+	ip := net.ParseIP(host)
+	if ip != nil && isPrivateIPDep(ip) {
+		return ErrBlockedHeartbeatURL
+	}
+
+	return nil
+}
+
+// SetHeartbeatConfig configures automatic health checking with advanced options
+func (d *Dependency) SetHeartbeatConfig(config HeartbeatConfig) error {
+	config.URL = strings.TrimSpace(config.URL)
+
+	if err := validateHeartbeatURL(config.URL); err != nil {
+		return err
 	}
 
 	if config.Interval <= 0 {

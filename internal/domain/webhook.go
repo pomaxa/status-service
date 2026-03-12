@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -42,6 +43,60 @@ type Webhook struct {
 	UpdatedAt time.Time
 }
 
+// isPrivateIP checks if an IP address is private/internal
+func isPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+
+	privateRanges := []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"169.254.0.0/16",
+		"127.0.0.0/8",
+		"::1/128",
+		"fc00::/7",
+		"fe80::/10",
+	}
+
+	for _, cidr := range privateRanges {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// validateWebhookURL validates a webhook URL for security (SSRF protection)
+func validateWebhookURL(rawURL string) error {
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return errors.New("invalid webhook URL")
+	}
+
+	host := parsed.Hostname()
+
+	if host == "localhost" || host == "" {
+		return errors.New("webhook URL cannot target localhost")
+	}
+
+	ip := net.ParseIP(host)
+	if ip != nil && isPrivateIP(ip) {
+		return errors.New("webhook URL cannot target private IP addresses")
+	}
+
+	return nil
+}
+
 // NewWebhook creates a new webhook with validation
 func NewWebhook(name, webhookURL string, webhookType WebhookType) (*Webhook, error) {
 	name = strings.TrimSpace(name)
@@ -54,12 +109,10 @@ func NewWebhook(name, webhookURL string, webhookType WebhookType) (*Webhook, err
 		return nil, errors.New("webhook URL is required")
 	}
 
-	// Validate URL
-	if _, err := url.ParseRequestURI(webhookURL); err != nil {
-		return nil, errors.New("invalid webhook URL")
+	if err := validateWebhookURL(webhookURL); err != nil {
+		return nil, err
 	}
 
-	// Validate type
 	if !isValidWebhookType(webhookType) {
 		webhookType = WebhookTypeGeneric
 	}
@@ -96,8 +149,8 @@ func (w *Webhook) Update(name, webhookURL string, webhookType WebhookType) error
 		return errors.New("webhook URL is required")
 	}
 
-	if _, err := url.ParseRequestURI(webhookURL); err != nil {
-		return errors.New("invalid webhook URL")
+	if err := validateWebhookURL(webhookURL); err != nil {
+		return err
 	}
 
 	if !isValidWebhookType(webhookType) {
