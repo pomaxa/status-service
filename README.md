@@ -454,6 +454,7 @@ groups:
 
 ## Documentation
 
+- [Integration Examples](examples/) - Code examples in Python, Go, PHP, and Ruby on Rails
 - [Health Check Implementation Guide](docs/HEALTHCHECK_GUIDE.md) - How to implement health endpoints for your services
 - [Upgrade Guide](docs/UPGRADE.md) - Safe upgrade process with automatic backups
 
