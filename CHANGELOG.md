@@ -6,12 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-06-09
+
 ### Security
 - Bump Go build toolchain from 1.24 to 1.26 (Dockerfile + CI) to pull patched standard-library releases, resolving 11 code-reachable stdlib vulnerabilities (crypto/tls, crypto/x509, html/template, net/http, net/textproto)
-- Update `golang.org/x/net` to v0.53.0 (GO-2026-4918)
+- Update `golang.org/x/net` to v0.55.0 (GO-2026-4918)
 - Ruby example: bump `httparty` to `~> 0.24` (GHSA / Dependabot #2 — SSRF leading to API key leakage, fixed in 0.24.0)
 - Python example: raise dependency floors to patched versions — `requests>=2.32.4`, `flask>=2.3.2`, `fastapi>=0.109.1` — so the minimum resolvable versions carry no known advisories
 - Verified clean with `govulncheck` (0 vulnerabilities) on the patched toolchain
+
+### Changed
+- Update direct Go dependencies to latest: `go-chi/chi/v5` v5.2.2 → v5.3.0, `mattn/go-sqlite3` v1.14.19 → v1.14.45
 
 ## [1.3.0] - 2026-06-09
 
