@@ -37,7 +37,6 @@ func TestDependencyRepo_Create(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create dependency: %v", err)
 	}
-	dep.HeartbeatMethod = "GET" // Required by schema
 
 	err = repo.Create(ctx, dep)
 	if err != nil {
@@ -46,6 +45,79 @@ func TestDependencyRepo_Create(t *testing.T) {
 
 	if dep.ID == 0 {
 		t.Error("expected dependency ID to be set after Create()")
+	}
+}
+
+// TestDependencyRepo_Create_DefaultsMethodWhenEmpty reproduces the production
+// path: a dependency created via domain.NewDependency never sets HeartbeatMethod,
+// so it is "". The heartbeat_method column is NOT NULL, so the repo must persist
+// a default ("GET") rather than NULL. Previously this failed with
+// "NOT NULL constraint failed: dependencies.heartbeat_method".
+func TestDependencyRepo_Create_DefaultsMethodWhenEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	system := createTestSystem(t, db)
+	repo := NewDependencyRepo(db)
+	ctx := context.Background()
+
+	// Exactly what DependencyService.CreateDependency does — no method set.
+	dep, err := domain.NewDependency(system.ID, "Scoring API", "Created via Add Dependency dialog")
+	if err != nil {
+		t.Fatalf("NewDependency() error = %v", err)
+	}
+	if dep.HeartbeatMethod != "" {
+		t.Fatalf("precondition: expected empty HeartbeatMethod, got %q", dep.HeartbeatMethod)
+	}
+
+	if err := repo.Create(ctx, dep); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	retrieved, err := repo.GetByID(ctx, dep.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if retrieved.HeartbeatMethod != "GET" {
+		t.Errorf("HeartbeatMethod = %q, want GET (NOT NULL default)", retrieved.HeartbeatMethod)
+	}
+}
+
+// TestDependencyRepo_Update_DefaultsMethodWhenEmpty covers the ClearHeartbeat
+// path: domain.ClearHeartbeat sets HeartbeatMethod to "" and the service then
+// calls Update. The NOT NULL column must still receive a default, not NULL.
+func TestDependencyRepo_Update_DefaultsMethodWhenEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	system := createTestSystem(t, db)
+	repo := NewDependencyRepo(db)
+	ctx := context.Background()
+
+	dep, _ := domain.NewDependency(system.ID, "API", "")
+	if err := dep.SetHeartbeatConfig(domain.HeartbeatConfig{
+		URL:      "https://api.example.com/health",
+		Interval: 30,
+		Method:   "POST",
+	}); err != nil {
+		t.Fatalf("SetHeartbeatConfig() error = %v", err)
+	}
+	if err := repo.Create(ctx, dep); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	// Clear heartbeat -> method becomes "".
+	dep.ClearHeartbeat()
+	if err := repo.Update(ctx, dep); err != nil {
+		t.Fatalf("Update() after ClearHeartbeat error = %v", err)
+	}
+
+	retrieved, err := repo.GetByID(ctx, dep.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if retrieved.HeartbeatMethod != "GET" {
+		t.Errorf("HeartbeatMethod = %q, want GET after ClearHeartbeat", retrieved.HeartbeatMethod)
 	}
 }
 
@@ -108,7 +180,6 @@ func TestDependencyRepo_GetByID(t *testing.T) {
 	ctx := context.Background()
 
 	dep, _ := domain.NewDependency(system.ID, "Test Dependency", "Description")
-	dep.HeartbeatMethod = "GET" // Required by schema
 	if err := repo.Create(ctx, dep); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -171,12 +242,9 @@ func TestDependencyRepo_GetBySystemID(t *testing.T) {
 
 	// Create dependencies for system1
 	dep1, _ := domain.NewDependency(system1.ID, "Dep Alpha", "")
-	dep1.HeartbeatMethod = "GET"
 	dep2, _ := domain.NewDependency(system1.ID, "Dep Beta", "")
-	dep2.HeartbeatMethod = "GET"
 	// Create dependency for system2
 	dep3, _ := domain.NewDependency(system2.ID, "Dep Gamma", "")
-	dep3.HeartbeatMethod = "GET"
 
 	for _, dep := range []*domain.Dependency{dep1, dep2, dep3} {
 		if err := repo.Create(ctx, dep); err != nil {
@@ -238,7 +306,6 @@ func TestDependencyRepo_GetAllWithHeartbeat(t *testing.T) {
 
 	// Create dependency without heartbeat
 	depWithoutHB, _ := domain.NewDependency(system.ID, "Without Heartbeat", "")
-	depWithoutHB.HeartbeatMethod = "GET" // Required by schema
 
 	for _, dep := range []*domain.Dependency{depWithHB, depWithoutHB} {
 		if err := repo.Create(ctx, dep); err != nil {
@@ -270,7 +337,6 @@ func TestDependencyRepo_Update(t *testing.T) {
 	ctx := context.Background()
 
 	dep, _ := domain.NewDependency(system.ID, "Original Name", "Original Description")
-	dep.HeartbeatMethod = "GET" // Required by schema
 	if err := repo.Create(ctx, dep); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -343,7 +409,6 @@ func TestDependencyRepo_Delete(t *testing.T) {
 	ctx := context.Background()
 
 	dep, _ := domain.NewDependency(system.ID, "To Delete", "")
-	dep.HeartbeatMethod = "GET" // Required by schema
 	if err := repo.Create(ctx, dep); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -428,7 +493,6 @@ func TestDependencyRepo_StatusPersistence(t *testing.T) {
 		t.Run(string(status), func(t *testing.T) {
 			dep, _ := domain.NewDependency(system.ID, "Status Test "+string(status), "")
 			dep.Status = status
-			dep.HeartbeatMethod = "GET" // Required by schema
 
 			if err := repo.Create(ctx, dep); err != nil {
 				t.Fatalf("Create() error = %v", err)

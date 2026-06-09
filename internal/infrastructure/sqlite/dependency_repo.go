@@ -42,7 +42,7 @@ func (r *DependencyRepo) Create(ctx context.Context, dep *domain.Dependency) err
 		dep.Status.String(),
 		nullString(dep.HeartbeatURL),
 		dep.HeartbeatInterval,
-		nullString(dep.HeartbeatMethod),
+		heartbeatMethodValue(dep.HeartbeatMethod),
 		headersJSON,
 		dep.HeartbeatBody,
 		dep.HeartbeatExpectStatus,
@@ -154,7 +154,7 @@ func (r *DependencyRepo) Update(ctx context.Context, dep *domain.Dependency) err
 		dep.Status.String(),
 		nullString(dep.HeartbeatURL),
 		dep.HeartbeatInterval,
-		nullString(dep.HeartbeatMethod),
+		heartbeatMethodValue(dep.HeartbeatMethod),
 		headersJSON,
 		dep.HeartbeatBody,
 		dep.HeartbeatExpectStatus,
@@ -315,6 +315,17 @@ func nullString(s string) interface{} {
 		return nil
 	}
 	return s
+}
+
+// heartbeatMethodValue returns the HTTP method to persist. The heartbeat_method
+// column is NOT NULL (DEFAULT 'GET'), and an explicit NULL bind bypasses that
+// default, so an empty method must map to "GET" here. Empty is the normal state
+// for a dependency without a configured heartbeat (and after ClearHeartbeat).
+func heartbeatMethodValue(method string) string {
+	if method == "" {
+		return "GET"
+	}
+	return method
 }
 
 func encodeHeaders(headers map[string]string) interface{} {
