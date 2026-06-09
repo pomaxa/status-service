@@ -20,7 +20,7 @@ This directory contains Ruby examples for integrating with the Status Incident S
 gem install httparty
 
 # Or add to your Gemfile:
-gem 'httparty', '~> 0.21'
+gem 'httparty', '~> 0.24'
 ```
 
 ## Quick Start
