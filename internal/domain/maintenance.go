@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"time"
 )
 
@@ -31,16 +30,16 @@ type Maintenance struct {
 // NewMaintenance creates a new maintenance window
 func NewMaintenance(title, description string, startTime, endTime time.Time) (*Maintenance, error) {
 	if title == "" {
-		return nil, errors.New("title is required")
+		return nil, ValidationError("title is required")
 	}
 	if startTime.IsZero() {
-		return nil, errors.New("start time is required")
+		return nil, ValidationError("start time is required")
 	}
 	if endTime.IsZero() {
-		return nil, errors.New("end time is required")
+		return nil, ValidationError("end time is required")
 	}
 	if !endTime.After(startTime) {
-		return nil, errors.New("end time must be after start time")
+		return nil, ValidationError("end time must be after start time")
 	}
 
 	now := time.Now()
@@ -65,16 +64,16 @@ func NewMaintenance(title, description string, startTime, endTime time.Time) (*M
 // Update updates the maintenance window details
 func (m *Maintenance) Update(title, description string, startTime, endTime time.Time) error {
 	if title == "" {
-		return errors.New("title is required")
+		return ValidationError("title is required")
 	}
 	if startTime.IsZero() {
-		return errors.New("start time is required")
+		return ValidationError("start time is required")
 	}
 	if endTime.IsZero() {
-		return errors.New("end time is required")
+		return ValidationError("end time is required")
 	}
 	if !endTime.After(startTime) {
-		return errors.New("end time must be after start time")
+		return ValidationError("end time must be after start time")
 	}
 
 	m.Title = title

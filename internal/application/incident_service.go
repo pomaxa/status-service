@@ -101,7 +101,7 @@ func (s *IncidentService) AcknowledgeIncident(ctx context.Context, id int64, by 
 		return nil, fmt.Errorf("failed to get incident: %w", err)
 	}
 	if incident == nil {
-		return nil, fmt.Errorf("incident not found: %d", id)
+		return nil, fmt.Errorf("incident not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	if err := incident.Acknowledge(by); err != nil {
@@ -122,7 +122,7 @@ func (s *IncidentService) UpdateIncidentStatus(ctx context.Context, id int64, st
 		return nil, fmt.Errorf("failed to get incident: %w", err)
 	}
 	if incident == nil {
-		return nil, fmt.Errorf("incident not found: %d", id)
+		return nil, fmt.Errorf("incident not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	if err := incident.UpdateStatus(status); err != nil {
@@ -151,7 +151,7 @@ func (s *IncidentService) AddIncidentUpdate(ctx context.Context, incidentID int6
 		return nil, fmt.Errorf("failed to get incident: %w", err)
 	}
 	if incident == nil {
-		return nil, fmt.Errorf("incident not found: %d", incidentID)
+		return nil, fmt.Errorf("incident not found: %d: %w", incidentID, domain.ErrNotFound)
 	}
 
 	update, err := domain.NewIncidentUpdate(incidentID, incident.Status, message, createdBy)
@@ -173,7 +173,7 @@ func (s *IncidentService) ResolveIncident(ctx context.Context, id int64, postmor
 		return nil, fmt.Errorf("failed to get incident: %w", err)
 	}
 	if incident == nil {
-		return nil, fmt.Errorf("incident not found: %d", id)
+		return nil, fmt.Errorf("incident not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	if err := incident.Resolve(postmortem); err != nil {

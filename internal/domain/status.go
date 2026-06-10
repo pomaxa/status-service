@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"strings"
 )
 
@@ -14,7 +13,7 @@ const (
 	StatusRed    Status = "red"
 )
 
-var ErrInvalidStatus = errors.New("invalid status: must be green, yellow, or red")
+var ErrInvalidStatus = ValidationError("invalid status: must be green, yellow, or red")
 
 // NewStatus creates a Status from string with validation
 func NewStatus(s string) (Status, error) {

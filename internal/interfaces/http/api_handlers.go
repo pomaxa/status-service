@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -56,7 +57,28 @@ func (s *Server) respondJSON(w http.ResponseWriter, status int, data interface{}
 }
 
 func (s *Server) respondError(w http.ResponseWriter, status int, message string) {
+	// Never leak internal error detail (e.g. wrapped driver text) to clients on
+	// 5xx; log it server-side and return a generic message instead.
+	if status >= http.StatusInternalServerError {
+		log.Printf("HTTP %d: %s", status, message)
+		message = "internal server error"
+	}
 	s.respondJSON(w, status, errorResponse{Error: message})
+}
+
+// respondServiceError maps an application/service error to the correct HTTP
+// status: a missing resource -> 404, a validation failure -> 400 (the message
+// is user-actionable), and anything else -> 500 (generic body; detail logged by
+// respondError). Mutating handlers funnel service errors through this.
+func (s *Server) respondServiceError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		s.respondError(w, http.StatusNotFound, "resource not found")
+	case errors.Is(err, domain.ErrValidation):
+		s.respondError(w, http.StatusBadRequest, err.Error())
+	default:
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+	}
 }
 
 // Standalone helper functions for non-Server handlers
@@ -70,6 +92,10 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
+	if status >= http.StatusInternalServerError {
+		log.Printf("HTTP %d: %s", status, message)
+		message = "internal server error"
+	}
 	writeJSON(w, status, errorResponse{Error: message})
 }
 
@@ -113,7 +139,7 @@ func (s *Server) apiCreateSystem(w http.ResponseWriter, r *http.Request) {
 
 	system, err := s.systemService.CreateSystem(r.Context(), req.Name, req.Description, req.URL, req.Owner)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -163,7 +189,7 @@ func (s *Server) apiUpdateSystem(w http.ResponseWriter, r *http.Request) {
 
 	system, err := s.systemService.UpdateSystem(r.Context(), id, req.Name, req.Description, req.URL, req.Owner)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -210,7 +236,7 @@ func (s *Server) apiUpdateSystemStatus(w http.ResponseWriter, r *http.Request) {
 
 	system, err := s.systemService.UpdateSystemStatus(r.Context(), id, req.Status, req.Message)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -293,7 +319,7 @@ func (s *Server) apiCreateDependency(w http.ResponseWriter, r *http.Request) {
 
 	dep, err := s.depService.CreateDependency(r.Context(), systemID, req.Name, req.Description)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -335,7 +361,7 @@ func (s *Server) apiUpdateDependency(w http.ResponseWriter, r *http.Request) {
 
 	dep, err := s.depService.UpdateDependency(r.Context(), id, req.Name, req.Description)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -372,7 +398,7 @@ func (s *Server) apiUpdateDependencyStatus(w http.ResponseWriter, r *http.Reques
 
 	dep, err := s.depService.UpdateDependencyStatus(r.Context(), id, req.Status, req.Message)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -404,7 +430,7 @@ func (s *Server) apiSetHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	dep, err := s.depService.SetHeartbeatConfig(r.Context(), id, config)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -420,7 +446,7 @@ func (s *Server) apiClearHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	dep, err := s.depService.ClearHeartbeat(r.Context(), id)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -436,7 +462,7 @@ func (s *Server) apiForceCheck(w http.ResponseWriter, r *http.Request) {
 
 	dep, err := s.heartbeatService.ForceCheck(r.Context(), id)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -609,7 +635,7 @@ func (s *Server) apiCreateMaintenance(w http.ResponseWriter, r *http.Request) {
 
 	m, err := s.maintenanceService.CreateMaintenance(r.Context(), req.Title, req.Description, startTime, endTime, req.SystemIDs)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -663,7 +689,7 @@ func (s *Server) apiUpdateMaintenance(w http.ResponseWriter, r *http.Request) {
 
 	m, err := s.maintenanceService.UpdateMaintenance(r.Context(), id, req.Title, req.Description, startTime, endTime, req.SystemIDs)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -694,7 +720,7 @@ func (s *Server) apiCancelMaintenance(w http.ResponseWriter, r *http.Request) {
 
 	m, err := s.maintenanceService.CancelMaintenance(r.Context(), id)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -842,7 +868,7 @@ func (s *Server) apiCreateIncident(w http.ResponseWriter, r *http.Request) {
 
 	incident, err := s.incidentService.CreateIncident(r.Context(), req.Title, req.Message, severity, req.SystemIDs)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -904,7 +930,7 @@ func (s *Server) apiAcknowledgeIncident(w http.ResponseWriter, r *http.Request) 
 
 	incident, err := s.incidentService.AcknowledgeIncident(r.Context(), id, req.By)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -931,7 +957,7 @@ func (s *Server) apiUpdateIncidentStatus(w http.ResponseWriter, r *http.Request)
 
 	incident, err := s.incidentService.UpdateIncidentStatus(r.Context(), id, status, req.Message, req.By)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -958,7 +984,7 @@ func (s *Server) apiResolveIncident(w http.ResponseWriter, r *http.Request) {
 
 	incident, err := s.incidentService.ResolveIncident(r.Context(), id, req.Postmortem, req.By)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 
@@ -1012,7 +1038,7 @@ func (s *Server) apiAddIncidentUpdate(w http.ResponseWriter, r *http.Request) {
 
 	update, err := s.incidentService.AddIncidentUpdate(r.Context(), id, req.Message, req.By)
 	if err != nil {
-		s.respondError(w, http.StatusBadRequest, err.Error())
+		s.respondServiceError(w, err)
 		return
 	}
 

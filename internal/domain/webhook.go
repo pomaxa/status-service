@@ -2,7 +2,6 @@ package domain
 
 import (
 	"encoding/json"
-	"errors"
 	"net"
 	"net/url"
 	"strings"
@@ -86,18 +85,18 @@ func isPrivateIP(ip net.IP) bool {
 func validateWebhookURL(rawURL string) error {
 	parsed, err := url.ParseRequestURI(rawURL)
 	if err != nil {
-		return errors.New("invalid webhook URL")
+		return ValidationError("invalid webhook URL")
 	}
 
 	host := parsed.Hostname()
 
 	if host == "localhost" || host == "" {
-		return errors.New("webhook URL cannot target localhost")
+		return ValidationError("webhook URL cannot target localhost")
 	}
 
 	ip := net.ParseIP(host)
 	if ip != nil && isPrivateIP(ip) {
-		return errors.New("webhook URL cannot target private IP addresses")
+		return ValidationError("webhook URL cannot target private IP addresses")
 	}
 
 	return nil
@@ -107,12 +106,12 @@ func validateWebhookURL(rawURL string) error {
 func NewWebhook(name, webhookURL string, webhookType WebhookType) (*Webhook, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return nil, errors.New("webhook name is required")
+		return nil, ValidationError("webhook name is required")
 	}
 
 	webhookURL = strings.TrimSpace(webhookURL)
 	if webhookURL == "" {
-		return nil, errors.New("webhook URL is required")
+		return nil, ValidationError("webhook URL is required")
 	}
 
 	if err := validateWebhookURL(webhookURL); err != nil {
@@ -147,12 +146,12 @@ func isValidWebhookType(t WebhookType) bool {
 func (w *Webhook) Update(name, webhookURL string, webhookType WebhookType) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return errors.New("webhook name is required")
+		return ValidationError("webhook name is required")
 	}
 
 	webhookURL = strings.TrimSpace(webhookURL)
 	if webhookURL == "" {
-		return errors.New("webhook URL is required")
+		return ValidationError("webhook URL is required")
 	}
 
 	if err := validateWebhookURL(webhookURL); err != nil {

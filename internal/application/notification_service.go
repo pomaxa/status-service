@@ -402,7 +402,7 @@ func (s *NotificationService) SendTestNotification(ctx context.Context, webhookI
 		return fmt.Errorf("failed to get webhook: %w", err)
 	}
 	if webhook == nil {
-		return fmt.Errorf("webhook not found")
+		return fmt.Errorf("webhook not found: %w", domain.ErrNotFound)
 	}
 
 	// Create test payload

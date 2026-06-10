@@ -139,7 +139,9 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 	// the user; CheckAllDependencies logs it and continues) — but only after
 	// the dependency's failure state has been recorded above.
 	if result.Error != nil {
-		return fmt.Errorf("check error: %w", result.Error)
+		// A check that could not run is a configuration/validation problem
+		// (bad URL/method, SSRF-blocked target), surfaced to ForceCheck as 400.
+		return fmt.Errorf("check error: %v: %w", result.Error, domain.ErrValidation)
 	}
 
 	return nil
@@ -152,10 +154,10 @@ func (s *HeartbeatService) ForceCheck(ctx context.Context, depID int64) (*domain
 		return nil, fmt.Errorf("failed to get dependency: %w", err)
 	}
 	if dep == nil {
-		return nil, fmt.Errorf("dependency not found: %d", depID)
+		return nil, fmt.Errorf("dependency not found: %d: %w", depID, domain.ErrNotFound)
 	}
 	if !dep.HasHeartbeat() {
-		return nil, fmt.Errorf("dependency has no heartbeat configured")
+		return nil, domain.ValidationError("dependency has no heartbeat configured")
 	}
 
 	if err := s.checkDependency(ctx, dep); err != nil {

@@ -81,7 +81,7 @@ func (s *MaintenanceService) UpdateMaintenance(ctx context.Context, id int64, ti
 		return nil, fmt.Errorf("failed to get maintenance: %w", err)
 	}
 	if m == nil {
-		return nil, fmt.Errorf("maintenance not found: %d", id)
+		return nil, fmt.Errorf("maintenance not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	if err := m.Update(title, description, startTime, endTime); err != nil {
@@ -104,7 +104,7 @@ func (s *MaintenanceService) CancelMaintenance(ctx context.Context, id int64) (*
 		return nil, fmt.Errorf("failed to get maintenance: %w", err)
 	}
 	if m == nil {
-		return nil, fmt.Errorf("maintenance not found: %d", id)
+		return nil, fmt.Errorf("maintenance not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	m.Cancel()

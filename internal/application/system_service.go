@@ -65,7 +65,7 @@ func (s *SystemService) UpdateSystem(ctx context.Context, id int64, name, descri
 		return nil, fmt.Errorf("failed to get system: %w", err)
 	}
 	if system == nil {
-		return nil, fmt.Errorf("system not found: %d", id)
+		return nil, fmt.Errorf("system not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	if err := system.Update(name, description, url, owner); err != nil {
@@ -86,7 +86,7 @@ func (s *SystemService) UpdateSystemStatus(ctx context.Context, id int64, status
 		return nil, fmt.Errorf("failed to get system: %w", err)
 	}
 	if system == nil {
-		return nil, fmt.Errorf("system not found: %d", id)
+		return nil, fmt.Errorf("system not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	newStatus, err := domain.NewStatus(statusStr)
