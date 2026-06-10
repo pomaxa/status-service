@@ -149,14 +149,15 @@ func (h *APIKeyHandlers) ToggleAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key, err := h.repo.GetByKey(r.Context(), idStr)
+	// Look the key up by its numeric ID (there is no GetByID on the repo, so
+	// scan GetAll). The previous code also called GetByKey(idStr) — treating the
+	// ID as a key value — whose result was discarded and which could spuriously
+	// 500 the request on a repo error.
+	keys, err := h.repo.GetAll(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get API key")
+		writeError(w, http.StatusInternalServerError, "failed to get API keys")
 		return
 	}
-
-	// Need to get by ID, not by key value
-	keys, _ := h.repo.GetAll(r.Context())
 	var foundKey *domain.APIKey
 	for _, k := range keys {
 		if k.ID == id {
@@ -177,5 +178,4 @@ func (h *APIKeyHandlers) ToggleAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]bool{"enabled": foundKey.Enabled})
-	_ = key // suppress unused warning
 }

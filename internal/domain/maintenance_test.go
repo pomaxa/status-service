@@ -118,6 +118,30 @@ func TestNewMaintenance(t *testing.T) {
 	}
 }
 
+func TestMaintenance_RejectsZeroLengthAndZeroTimes(t *testing.T) {
+	now := time.Now()
+	start := now.Add(1 * time.Hour)
+
+	// Zero-length window (end == start) must be rejected at creation.
+	if _, err := NewMaintenance("T", "", start, start); err == nil {
+		t.Error("NewMaintenance accepted a zero-length window (end == start)")
+	}
+
+	m, err := NewMaintenance("T", "", start, start.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("setup NewMaintenance error: %v", err)
+	}
+	if err := m.Update("T", "", start, start); err == nil {
+		t.Error("Update accepted a zero-length window (end == start)")
+	}
+	if err := m.Update("T", "", time.Time{}, start.Add(time.Hour)); err == nil {
+		t.Error("Update accepted a zero start time")
+	}
+	if err := m.Update("T", "", start, time.Time{}); err == nil {
+		t.Error("Update accepted a zero end time")
+	}
+}
+
 func TestMaintenance_Update(t *testing.T) {
 	now := time.Now()
 	future := now.Add(1 * time.Hour)

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -262,8 +263,14 @@ func (m *AuthMiddleware) validateAPIKey(r *http.Request, key string) *domain.Use
 		return nil
 	}
 
-	// Update last used timestamp (fire and forget)
-	go m.apiKeyRepo.UpdateLastUsed(r.Context(), apiKey.ID)
+	// Update last used timestamp (fire and forget). Use a detached context with
+	// its own deadline: the request context is cancelled when the handler
+	// returns, which would otherwise abort this background write.
+	go func(id int64) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		m.apiKeyRepo.UpdateLastUsed(ctx, id)
+	}(apiKey.ID)
 
 	return &domain.User{
 		Username: apiKey.Name,
@@ -320,7 +327,7 @@ func (m *AuthMiddleware) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			Value:    sessionToken,
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   r.TLS != nil,
+			Secure:   isSecureRequest(r),
 			SameSite: http.SameSiteStrictMode,
 			MaxAge:   86400 * 7, // 7 days
 		})
@@ -370,11 +377,22 @@ func (m *AuthMiddleware) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   isSecureRequest(r),
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 	})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+// isSecureRequest reports whether the request arrived over HTTPS, either
+// directly (r.TLS) or via a TLS-terminating reverse proxy that forwards the
+// original scheme. Without this, cookies set behind such a proxy would lack the
+// Secure flag and could be sent over cleartext HTTP.
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
 func (m *AuthMiddleware) renderLoginPage(w http.ResponseWriter, errorMsg string) {

@@ -247,6 +247,42 @@ ALTER TABLE dependencies ADD COLUMN heartbeat_expect_body TEXT NOT NULL DEFAULT 
 ALTER TABLE dependencies ADD COLUMN last_status_code INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+	{
+		Version: 9,
+		Name:    "allow_propagation_source",
+		// The status_log.source CHECK constraint originally only permitted
+		// 'manual' and 'heartbeat'. The status-propagation feature writes
+		// source='propagation', which the constraint rejected, so every
+		// propagated status change failed to be logged. SQLite cannot ALTER a
+		// CHECK constraint, so rebuild the table with the expanded constraint.
+		// status_log is not referenced by any foreign key, so the rebuild is
+		// safe with foreign_keys enabled.
+		SQL: `
+CREATE TABLE status_log_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    system_id INTEGER,
+    dependency_id INTEGER,
+    old_status TEXT NOT NULL CHECK(old_status IN ('green', 'yellow', 'red')),
+    new_status TEXT NOT NULL CHECK(new_status IN ('green', 'yellow', 'red')),
+    message TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual' CHECK(source IN ('manual', 'heartbeat', 'propagation')),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (system_id) REFERENCES systems(id) ON DELETE SET NULL,
+    FOREIGN KEY (dependency_id) REFERENCES dependencies(id) ON DELETE SET NULL
+);
+
+INSERT INTO status_log_new (id, system_id, dependency_id, old_status, new_status, message, source, created_at)
+    SELECT id, system_id, dependency_id, old_status, new_status, message, source, created_at FROM status_log;
+
+DROP TABLE status_log;
+
+ALTER TABLE status_log_new RENAME TO status_log;
+
+CREATE INDEX IF NOT EXISTS idx_status_log_system_id ON status_log(system_id);
+CREATE INDEX IF NOT EXISTS idx_status_log_dependency_id ON status_log(dependency_id);
+CREATE INDEX IF NOT EXISTS idx_status_log_created_at ON status_log(created_at);
+`,
+	},
 }
 
 // New creates a new SQLite database connection
@@ -302,21 +338,34 @@ func (db *DB) Migrate() error {
 		log.Printf("Database backed up to: %s", backupPath)
 	}
 
-	// Apply pending migrations
+	// Apply pending migrations. Each migration and its schema_migrations record
+	// are committed atomically: SQLite runs DDL (CREATE/ALTER/DROP/RENAME)
+	// transactionally, so a failure rolls back the whole migration and leaves
+	// the recorded version consistent with the applied schema — no half-applied,
+	// unrecoverable state on retry.
 	for _, m := range pending {
 		log.Printf("Applying migration %d: %s", m.Version, m.Name)
 
-		if _, err := db.Exec(m.SQL); err != nil {
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("migration %d (%s): begin transaction: %w", m.Version, m.Name, err)
+		}
+
+		if _, err := tx.Exec(m.SQL); err != nil {
+			tx.Rollback()
 			return fmt.Errorf("migration %d (%s) failed: %w", m.Version, m.Name, err)
 		}
 
-		// Record migration
-		_, err := db.Exec(
+		if _, err := tx.Exec(
 			"INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
 			m.Version, m.Name,
-		)
-		if err != nil {
+		); err != nil {
+			tx.Rollback()
 			return fmt.Errorf("failed to record migration %d: %w", m.Version, err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("migration %d (%s): commit: %w", m.Version, m.Name, err)
 		}
 	}
 

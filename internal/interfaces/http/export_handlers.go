@@ -212,7 +212,9 @@ func (s *Server) apiImportAll(w http.ResponseWriter, r *http.Request) {
 
 		// Update status if not green
 		if expSys.Status != "green" {
-			s.systemService.UpdateSystemStatus(ctx, sys.ID, expSys.Status, "Imported from backup")
+			if _, err := s.systemService.UpdateSystemStatus(ctx, sys.ID, expSys.Status, "Imported from backup"); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("system '%s' status: %v", expSys.Name, err))
+			}
 		}
 
 		systemIDMap[expSys.ID] = sys.ID
@@ -235,12 +237,16 @@ func (s *Server) apiImportAll(w http.ResponseWriter, r *http.Request) {
 
 		// Set heartbeat if configured
 		if expDep.HeartbeatURL != "" {
-			s.depService.SetHeartbeat(ctx, dep.ID, expDep.HeartbeatURL, expDep.HeartbeatInterval)
+			if _, err := s.depService.SetHeartbeat(ctx, dep.ID, expDep.HeartbeatURL, expDep.HeartbeatInterval); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("dependency '%s' heartbeat: %v", expDep.Name, err))
+			}
 		}
 
 		// Update status if not green
 		if expDep.Status != "green" {
-			s.depService.UpdateDependencyStatus(ctx, dep.ID, expDep.Status, "Imported from backup")
+			if _, err := s.depService.UpdateDependencyStatus(ctx, dep.ID, expDep.Status, "Imported from backup"); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("dependency '%s' status: %v", expDep.Name, err))
+			}
 		}
 
 		depIDMap[expDep.ID] = dep.ID

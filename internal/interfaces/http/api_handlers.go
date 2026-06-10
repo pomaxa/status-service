@@ -2,6 +2,8 @@ package http
 
 import (
 	"encoding/json"
+	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -47,7 +49,9 @@ type errorResponse struct {
 func (s *Server) respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 	if data != nil {
-		json.NewEncoder(w).Encode(data)
+		if err := json.NewEncoder(w).Encode(data); err != nil {
+			log.Printf("respondJSON: failed to encode response: %v", err)
+		}
 	}
 }
 
@@ -59,7 +63,9 @@ func (s *Server) respondError(w http.ResponseWriter, status int, message string)
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 	if data != nil {
-		json.NewEncoder(w).Encode(data)
+		if err := json.NewEncoder(w).Encode(data); err != nil {
+			log.Printf("writeJSON: failed to encode response: %v", err)
+		}
 	}
 }
 
@@ -886,7 +892,12 @@ func (s *Server) apiAcknowledgeIncident(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var req incidentAckRequest
-	json.NewDecoder(r.Body).Decode(&req)
+	// Body is optional (acknowledge with no payload), but a malformed body
+	// should be rejected rather than silently treated as empty.
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
 	if req.By == "" {
 		req.By = "unknown"
 	}
@@ -935,7 +946,12 @@ func (s *Server) apiResolveIncident(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req incidentResolveRequest
-	json.NewDecoder(r.Body).Decode(&req)
+	// Body is optional (resolve with no payload), but a malformed body should be
+	// rejected rather than silently treated as empty.
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
 	if req.By == "" {
 		req.By = "unknown"
 	}

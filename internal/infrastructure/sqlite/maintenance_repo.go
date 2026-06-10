@@ -194,5 +194,9 @@ func (r *MaintenanceRepo) scanMaintenances(rows *sql.Rows) ([]*domain.Maintenanc
 		maintenances = append(maintenances, &m)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return maintenances, nil
 }

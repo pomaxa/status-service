@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"status-incident/internal/domain"
+	"status-incident/internal/ssrf"
 )
 
 var (
@@ -31,53 +32,33 @@ func New(timeout time.Duration) *Checker {
 	return NewWithOptions(timeout, false)
 }
 
-// NewWithOptions creates a new HTTP health checker with configurable options
+// NewWithOptions creates a new HTTP health checker with configurable options.
+// When allowPrivate is false (the production default), the client refuses to
+// connect to private/internal IPs at dial time — which also re-validates every
+// redirect hop and defeats DNS rebinding — and re-checks each redirect target.
 func NewWithOptions(timeout time.Duration, allowPrivate bool) *Checker {
-	return &Checker{
-		client: &http.Client{
-			Timeout: timeout,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return http.ErrUseLastResponse
-				}
-				return nil
-			},
-		},
-		allowPrivate: allowPrivate,
+	c := &Checker{allowPrivate: allowPrivate}
+	client := &http.Client{Timeout: timeout}
+
+	if allowPrivate {
+		client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		}
+	} else {
+		client.Transport = ssrf.GuardedTransport()
+		client.CheckRedirect = ssrf.RedirectGuard(10, c.validateURL)
 	}
+
+	c.client = client
+	return c
 }
 
-// isPrivateIP checks if an IP address is private/internal
+// isPrivateIP checks if an IP address is private/internal.
 func isPrivateIP(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	privateRanges := []string{
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
-		"169.254.0.0/16",
-		"127.0.0.0/8",
-		"::1/128",
-		"fc00::/7",
-		"fe80::/10",
-	}
-
-	for _, cidr := range privateRanges {
-		_, network, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
-		if network.Contains(ip) {
-			return true
-		}
-	}
-	return false
+	return ssrf.IsPrivateIP(ip)
 }
 
 // validateURL checks if a URL is safe to access (not targeting internal resources)

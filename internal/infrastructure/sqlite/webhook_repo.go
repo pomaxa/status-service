@@ -145,6 +145,10 @@ func (r *WebhookRepo) queryWebhooks(ctx context.Context, query string, args ...i
 		webhooks = append(webhooks, webhook)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate webhooks: %w", err)
+	}
+
 	return webhooks, nil
 }
 

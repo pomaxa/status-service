@@ -352,6 +352,11 @@ func TestIsValidExpectStatus(t *testing.T) {
 		{"letters", "abc", false},
 		{"empty part", "200,,201", false},
 		{"only comma", ",", false},
+		{"too short", "20", false},
+		{"too long", "99999", false},
+		{"out of range high", "600", false},
+		{"out of range low", "099", false},
+		{"single digit", "7", false},
 	}
 
 	for _, tt := range tests {
@@ -361,6 +366,30 @@ func TestIsValidExpectStatus(t *testing.T) {
 				t.Errorf("isValidExpectStatus(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestSetHeartbeatConfig_InvalidExpectBody(t *testing.T) {
+	dep, _ := NewDependency(1, "Test", "")
+	err := dep.SetHeartbeatConfig(HeartbeatConfig{
+		URL:        "https://api.example.com/health",
+		Interval:   60,
+		ExpectBody: "([unclosed", // not a compilable regex
+	})
+	if err != ErrInvalidExpectBody {
+		t.Fatalf("expected ErrInvalidExpectBody, got %v", err)
+	}
+}
+
+func TestSetHeartbeatConfig_ValidExpectBody(t *testing.T) {
+	dep, _ := NewDependency(1, "Test", "")
+	err := dep.SetHeartbeatConfig(HeartbeatConfig{
+		URL:        "https://api.example.com/health",
+		Interval:   60,
+		ExpectBody: `"status":\s*"ok"`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error for valid regex: %v", err)
 	}
 }
 

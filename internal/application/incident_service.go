@@ -34,10 +34,13 @@ func (s *IncidentService) CreateIncident(ctx context.Context, title, message str
 		return nil, fmt.Errorf("failed to create incident: %w", err)
 	}
 
-	// Create initial update entry
+	// Create initial update entry (timeline is auxiliary to the incident itself,
+	// so a failure here is logged rather than failing the whole create).
 	update, _ := domain.NewIncidentUpdate(incident.ID, incident.Status, message, "system")
 	if update != nil {
-		s.incidentRepo.CreateUpdate(ctx, update)
+		if err := s.incidentRepo.CreateUpdate(ctx, update); err != nil {
+			fmt.Printf("failed to create initial incident update for %d: %v\n", incident.ID, err)
+		}
 	}
 
 	return incident, nil
@@ -133,7 +136,9 @@ func (s *IncidentService) UpdateIncidentStatus(ctx context.Context, id int64, st
 	// Add update to timeline
 	update, _ := domain.NewIncidentUpdate(id, status, message, updatedBy)
 	if update != nil {
-		s.incidentRepo.CreateUpdate(ctx, update)
+		if err := s.incidentRepo.CreateUpdate(ctx, update); err != nil {
+			fmt.Printf("failed to create incident status-change update for %d: %v\n", id, err)
+		}
 	}
 
 	return incident, nil
@@ -186,7 +191,9 @@ func (s *IncidentService) ResolveIncident(ctx context.Context, id int64, postmor
 	}
 	update, _ := domain.NewIncidentUpdate(id, domain.IncidentResolved, message, resolvedBy)
 	if update != nil {
-		s.incidentRepo.CreateUpdate(ctx, update)
+		if err := s.incidentRepo.CreateUpdate(ctx, update); err != nil {
+			fmt.Printf("failed to create incident resolve update for %d: %v\n", id, err)
+		}
 	}
 
 	return incident, nil

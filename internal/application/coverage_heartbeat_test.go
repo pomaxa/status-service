@@ -184,3 +184,41 @@ func TestHeartbeatService_CheckDependency_StatusChangePropagatesAndNotifies(t *t
 	// Give the notification goroutine time to start.
 	time.Sleep(10 * time.Millisecond)
 }
+
+// TestHeartbeatService_CheckDependency_UnverifiableRecordsFailure guards against
+// the fail-open regression: when the checker cannot complete a check (URL/SSRF
+// validation block, malformed request -> result.Error != nil), the dependency
+// must NOT be left reporting its prior (green) status with a zero LastCheck —
+// which both lies about health and re-probes every cycle. It should record a
+// failure and advance LastCheck.
+func TestHeartbeatService_CheckDependency_UnverifiableRecordsFailure(t *testing.T) {
+	depRepo := NewMockDependencyRepository()
+	dep, _ := domain.NewDependency(1, "Redis", "Cache")
+	dep.ID = 1
+	dep.SetHeartbeatConfig(domain.HeartbeatConfig{URL: "https://redis.example.com/health", Interval: 60})
+	depRepo.Dependencies[1] = dep
+
+	if dep.Status != domain.StatusGreen || !dep.LastCheck.IsZero() {
+		t.Fatalf("precondition: expected fresh green dependency, got status=%s lastCheck=%v", dep.Status, dep.LastCheck)
+	}
+
+	checker := NewMockHealthChecker()
+	checker.CheckWithConfigFunc = func(ctx context.Context, config domain.HeartbeatConfig) domain.HealthCheckResult {
+		return domain.HealthCheckResult{Error: errors.New("blocked: SSRF validation failed")}
+	}
+	service := NewHeartbeatService(depRepo, NewMockStatusLogRepository(), checker)
+
+	// CheckAllDependencies swallows the per-dependency error; the dependency
+	// pointer is mutated in place.
+	_ = service.CheckAllDependencies(context.Background())
+
+	if dep.LastCheck.IsZero() {
+		t.Error("LastCheck must advance on an unverifiable check (else NeedsCheck re-probes every cycle)")
+	}
+	if dep.ConsecutiveFailures != 1 {
+		t.Errorf("ConsecutiveFailures = %d, want 1", dep.ConsecutiveFailures)
+	}
+	if dep.Status == domain.StatusGreen {
+		t.Error("status must leave green when the check could not be verified (fail-open bug)")
+	}
+}
