@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"status-incident/internal/domain"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -774,13 +775,10 @@ func intToStrPlain(i int) string {
 }
 
 func formatFloat(f float64) string {
-	// Simple float formatting
-	intPart := int64(f)
-	fracPart := int64((f - float64(intPart)) * 100)
-	if fracPart < 0 {
-		fracPart = -fracPart
-	}
-	return intToStr(intPart) + "." + padLeft(intToStrPlain(int(fracPart)), 2, '0')
+	// Round to 2 decimals; strconv handles rounding and sign correctly. The
+	// previous hand-rolled version truncated the fraction (e.g. 12.34 -> 12.33)
+	// and dropped the integer part for negative values, mis-reporting metrics.
+	return strconv.FormatFloat(f, 'f', 2, 64)
 }
 
 func padLeft(s string, length int, pad byte) string {

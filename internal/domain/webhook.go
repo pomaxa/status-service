@@ -49,7 +49,12 @@ func isPrivateIP(ip net.IP) bool {
 		return false
 	}
 
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+	if ip.IsLoopback() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsInterfaceLocalMulticast() ||
+		ip.IsMulticast() ||
+		ip.IsUnspecified() {
 		return true
 	}
 
@@ -59,6 +64,7 @@ func isPrivateIP(ip net.IP) bool {
 		"192.168.0.0/16",
 		"169.254.0.0/16",
 		"127.0.0.0/8",
+		"100.64.0.0/10",
 		"::1/128",
 		"fc00::/7",
 		"fe80::/10",

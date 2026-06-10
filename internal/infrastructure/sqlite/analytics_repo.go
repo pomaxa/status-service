@@ -97,6 +97,9 @@ func (r *AnalyticsRepo) GetOverallAnalytics(ctx context.Context, start, end time
 		}
 		systemIDs = append(systemIDs, id)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate systems: %w", err)
+	}
 
 	if len(systemIDs) == 0 {
 		// No systems, return 100% uptime

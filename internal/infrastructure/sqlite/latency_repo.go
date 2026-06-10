@@ -99,11 +99,15 @@ func (r *LatencyRepo) GetAggregated(ctx context.Context, dependencyID int64, sta
 func (r *LatencyRepo) GetDailyUptime(ctx context.Context, dependencyID int64, days int) ([]domain.UptimePoint, error) {
 	startDate := time.Now().AddDate(0, 0, -days)
 
+	// Group by LOCAL date so the SQL day keys match the local-time keys used in
+	// the fill-in loop below. date(created_at) alone evaluates the stored
+	// timezone offset to a UTC date, which mis-buckets early-morning-local
+	// checks onto the wrong calendar day in non-UTC deployments.
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT
-			date(created_at) as day,
+			date(created_at, 'localtime') as day,
 			COUNT(*) as total,
-			SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures
+			COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0) as failures
 		FROM latency_history
 		WHERE dependency_id = ? AND created_at >= ?
 		GROUP BY day
@@ -167,7 +171,7 @@ func (r *LatencyRepo) GetStats(ctx context.Context, dependencyID int64, start, e
 			COALESCE(MIN(latency_ms), 0),
 			COALESCE(MAX(latency_ms), 0),
 			COUNT(*),
-			SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END)
+			COALESCE(SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END), 0)
 		FROM latency_history
 		WHERE dependency_id = ? AND created_at BETWEEN ? AND ?
 	`, dependencyID, start, end).Scan(&stats.AvgLatencyMs, &stats.MinLatencyMs, &stats.MaxLatencyMs, &stats.TotalChecks, &stats.FailedChecks)

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"status-incident/internal/domain"
+	"status-incident/internal/ssrf"
 )
 
 var (
@@ -40,12 +41,25 @@ func NewNotificationService(
 		depRepo:     depRepo,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
+			// Refuse to connect to private/internal IPs at dial time (defeats
+			// DNS rebinding) and re-validate every redirect hop's target.
+			Transport:     ssrf.GuardedTransport(),
+			CheckRedirect: ssrf.RedirectGuard(10, validateWebhookURL),
 		},
 	}
 }
 
-// NotifyStatusChange sends notifications for a status change
+// NotifyStatusChange sends notifications for a status change.
+//
+// Callers launch this in a detached goroutine (`go NotifyStatusChange(...)`),
+// so the inbound context belongs to the originating HTTP request or heartbeat
+// check and is cancelled the moment that caller returns. We retain its values
+// but strip its cancellation, then apply our own deadline, so notification
+// delivery is not aborted by the caller finishing first.
 func (s *NotificationService) NotifyStatusChange(ctx context.Context, statusLog *domain.StatusLog) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+
 	webhooks, err := s.webhookRepo.GetEnabled(ctx)
 	if err != nil {
 		logError("Failed to get webhooks: %v", err)
@@ -594,37 +608,9 @@ func logError(format string, args ...interface{}) {
 	log.Printf("[WEBHOOK ERROR] "+format, args...)
 }
 
-// isPrivateIP checks if an IP address is private/internal
+// isPrivateIP checks if an IP address is private/internal.
 func isPrivateIP(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	privateRanges := []string{
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
-		"169.254.0.0/16",
-		"127.0.0.0/8",
-		"::1/128",
-		"fc00::/7",
-		"fe80::/10",
-	}
-
-	for _, cidr := range privateRanges {
-		_, network, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
-		if network.Contains(ip) {
-			return true
-		}
-	}
-	return false
+	return ssrf.IsPrivateIP(ip)
 }
 
 // validateWebhookURL checks if a webhook URL is safe to access

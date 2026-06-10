@@ -84,17 +84,20 @@ func TestIntToStrPlain(t *testing.T) {
 }
 
 func TestFormatFloat(t *testing.T) {
-	// Expectations match ACTUAL production output (intToStr returns "" for
-	// negative ints, so negatives drop the integer part; FP truncation applies).
+	// formatFloat must round to 2 decimals and preserve sign (regression guard:
+	// the old hand-rolled version truncated the fraction and dropped the integer
+	// part of negative values, mis-reporting SLA target / uptime in /metrics).
 	cases := []struct {
 		in   float64
 		want string
 	}{
 		{0, "0.00"},
 		{1.5, "1.50"},
-		{12.34, "12.33"}, // FP truncation: int64(0.34*100)=33
+		{12.34, "12.34"},
 		{99.9, "99.90"},
-		{-2.25, ".25"}, // negative integer part renders empty via intToStr
+		{99.95, "99.95"},
+		{99.999, "100.00"}, // rounds up, not truncates
+		{-2.25, "-2.25"},   // negative integer part preserved
 	}
 	for _, tc := range cases {
 		if got := formatFloat(tc.in); got != tc.want {

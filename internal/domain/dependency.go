@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -14,6 +15,7 @@ var (
 	ErrInvalidHeartbeatInterval = errors.New("heartbeat interval must be positive")
 	ErrInvalidHeartbeatMethod   = errors.New("invalid HTTP method")
 	ErrInvalidExpectStatus      = errors.New("invalid expected status code format")
+	ErrInvalidExpectBody        = errors.New("invalid expected body regex pattern")
 	ErrBlockedHeartbeatURL      = errors.New("heartbeat URL cannot target private/internal addresses")
 )
 
@@ -176,6 +178,15 @@ func (d *Dependency) SetHeartbeatConfig(config HeartbeatConfig) error {
 		}
 	}
 
+	// Validate expect_body regex if provided, so an uncompilable pattern is
+	// rejected at configuration time instead of silently making the heartbeat
+	// permanently unhealthy.
+	if config.ExpectBody != "" {
+		if _, err := regexp.Compile(config.ExpectBody); err != nil {
+			return ErrInvalidExpectBody
+		}
+	}
+
 	d.HeartbeatURL = config.URL
 	d.HeartbeatInterval = config.Interval
 	d.HeartbeatMethod = method
@@ -203,11 +214,20 @@ func isValidExpectStatus(s string) bool {
 			}
 			continue
 		}
-		// Check for numeric status code
+		// Check for numeric status code: must be a real 3-digit HTTP status
+		// (100-599). The checker compares against 3-digit codes, so tokens of
+		// any other length/value can never match and would leave the heartbeat
+		// permanently unhealthy.
+		if len(part) != 3 {
+			return false
+		}
 		for _, c := range part {
 			if c < '0' || c > '9' {
 				return false
 			}
+		}
+		if part[0] < '1' || part[0] > '5' {
+			return false
 		}
 	}
 	return true

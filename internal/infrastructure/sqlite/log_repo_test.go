@@ -55,6 +55,40 @@ func TestLogRepo_Create_ForDependency(t *testing.T) {
 	}
 }
 
+// TestLogRepo_Create_PropagationSource guards against a regression where the
+// status_log.source CHECK constraint only allowed 'manual'/'heartbeat', causing
+// every status-propagation log write to fail silently (system status changed
+// but the audit trail was empty).
+func TestLogRepo_Create_PropagationSource(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	system := createTestSystem(t, db)
+	repo := NewLogRepo(db)
+	ctx := context.Background()
+
+	log := domain.NewStatusLog(&system.ID, nil, domain.StatusGreen, domain.StatusRed,
+		"Status propagated from dependencies (worst-case: red)", domain.SourcePropagation)
+
+	if err := repo.Create(ctx, log); err != nil {
+		t.Fatalf("Create() with propagation source error = %v", err)
+	}
+	if log.ID == 0 {
+		t.Error("expected log ID to be set after Create()")
+	}
+
+	logs, err := repo.GetBySystemID(ctx, system.ID, 10)
+	if err != nil {
+		t.Fatalf("GetBySystemID() error = %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected 1 propagation log, got %d", len(logs))
+	}
+	if logs[0].Source != domain.SourcePropagation {
+		t.Errorf("expected source %q, got %q", domain.SourcePropagation, logs[0].Source)
+	}
+}
+
 func TestLogRepo_GetBySystemID(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

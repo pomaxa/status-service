@@ -185,6 +185,10 @@ func (r *IncidentRepo) GetUpdates(ctx context.Context, incidentID int64) ([]*dom
 		updates = append(updates, &u)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return updates, nil
 }
 
@@ -236,6 +240,10 @@ func (r *IncidentRepo) scanIncidents(rows *sql.Rows) ([]*domain.Incident, error)
 		i.Severity = domain.IncidentSeverity(severity)
 
 		incidents = append(incidents, &i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return incidents, nil

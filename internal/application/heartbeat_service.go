@@ -69,17 +69,19 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 	config := dep.GetHeartbeatConfig()
 	result := s.checker.CheckWithConfig(ctx, config)
 
-	if result.Error != nil {
-		return fmt.Errorf("check error: %w", result.Error)
-	}
-
 	oldStatus := dep.Status
 	var statusChanged bool
 
 	// Update last status code
 	dep.LastStatusCode = result.StatusCode
 
-	if result.Healthy {
+	// A non-nil Error means the check could not even be completed (URL/SSRF
+	// validation block, malformed request). Treat "could not verify" the same
+	// as an unhealthy result: a green status must mean "verified healthy", not
+	// "we gave up checking". This also advances LastCheck below, so the
+	// dependency is not re-probed on every single heartbeat cycle.
+	healthy := result.Healthy && result.Error == nil
+	if healthy {
 		statusChanged = dep.RecordCheckSuccess(result.LatencyMs)
 	} else {
 		statusChanged = dep.RecordCheckFailure(result.LatencyMs)
@@ -90,7 +92,7 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 		record := &domain.LatencyRecord{
 			DependencyID: dep.ID,
 			LatencyMs:    result.LatencyMs,
-			Success:      result.Healthy,
+			Success:      healthy,
 			StatusCode:   result.StatusCode,
 		}
 		if err := s.latencyRepo.Record(ctx, record); err != nil {
@@ -106,9 +108,12 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 	// Log status change if happened
 	if statusChanged {
 		var message string
-		if result.Healthy {
+		switch {
+		case healthy:
 			message = fmt.Sprintf("Heartbeat check succeeded, service recovered (latency: %dms, status: %d)", result.LatencyMs, result.StatusCode)
-		} else {
+		case result.Error != nil:
+			message = fmt.Sprintf("Heartbeat check could not be completed: %v (%d consecutive failures)", result.Error, dep.ConsecutiveFailures)
+		default:
 			message = fmt.Sprintf("Heartbeat check failed (%d consecutive failures, latency: %dms, status: %d)", dep.ConsecutiveFailures, result.LatencyMs, result.StatusCode)
 		}
 
@@ -128,6 +133,13 @@ func (s *HeartbeatService) checkDependency(ctx context.Context, dep *domain.Depe
 				fmt.Printf("failed to propagate status to system %d: %v\n", dep.SystemID, err)
 			}
 		}
+	}
+
+	// Surface the underlying check error to callers (ForceCheck reports it to
+	// the user; CheckAllDependencies logs it and continues) — but only after
+	// the dependency's failure state has been recorded above.
+	if result.Error != nil {
+		return fmt.Errorf("check error: %w", result.Error)
 	}
 
 	return nil

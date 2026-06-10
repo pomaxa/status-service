@@ -28,6 +28,71 @@ func createTestDependency(t *testing.T, db *DB) *domain.Dependency {
 	return dep
 }
 
+// TestLatencyRepo_GetStats_NoRows guards against the regression where the
+// failures aggregate (SUM over zero rows -> NULL) was scanned into an int and
+// hard-failed GetStats for any dependency with no latency history in the window.
+func TestLatencyRepo_GetStats_NoRows(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	dep := createTestDependency(t, db)
+	repo := NewLatencyRepo(db)
+	ctx := context.Background()
+
+	stats, err := repo.GetStats(ctx, dep.ID, time.Now().Add(-24*time.Hour), time.Now())
+	if err != nil {
+		t.Fatalf("GetStats with no rows error = %v", err)
+	}
+	if stats.TotalChecks != 0 {
+		t.Errorf("TotalChecks = %d, want 0", stats.TotalChecks)
+	}
+	if stats.FailedChecks != 0 {
+		t.Errorf("FailedChecks = %d, want 0", stats.FailedChecks)
+	}
+	if stats.UptimePercent != 100.0 {
+		t.Errorf("UptimePercent = %v, want 100", stats.UptimePercent)
+	}
+}
+
+// TestLatencyRepo_GetDailyUptime_LocalDayAttribution verifies that recorded
+// checks are attributed to their LOCAL calendar day (matching the heatmap's
+// fill-in keys), not a timezone-shifted UTC day.
+func TestLatencyRepo_GetDailyUptime_LocalDayAttribution(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	dep := createTestDependency(t, db)
+	repo := NewLatencyRepo(db)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		if err := repo.Record(ctx, &domain.LatencyRecord{DependencyID: dep.ID, LatencyMs: 10, Success: true, StatusCode: 200}); err != nil {
+			t.Fatalf("Record() error = %v", err)
+		}
+	}
+
+	points, err := repo.GetDailyUptime(ctx, dep.ID, 7)
+	if err != nil {
+		t.Fatalf("GetDailyUptime() error = %v", err)
+	}
+
+	today := time.Now().Format("2006-01-02")
+	total := 0
+	var todayChecks int
+	for _, p := range points {
+		total += p.TotalChecks
+		if p.Date == today {
+			todayChecks = p.TotalChecks
+		}
+	}
+	if total != 3 {
+		t.Errorf("sum of TotalChecks across buckets = %d, want 3 (data must not be dropped)", total)
+	}
+	if todayChecks != 3 {
+		t.Errorf("today (%s) bucket TotalChecks = %d, want 3 (checks must land on their local day)", today, todayChecks)
+	}
+}
+
 func TestLatencyRepo_Record(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

@@ -39,7 +39,7 @@ func NewMaintenance(title, description string, startTime, endTime time.Time) (*M
 	if endTime.IsZero() {
 		return nil, errors.New("end time is required")
 	}
-	if endTime.Before(startTime) {
+	if !endTime.After(startTime) {
 		return nil, errors.New("end time must be after start time")
 	}
 
@@ -67,7 +67,13 @@ func (m *Maintenance) Update(title, description string, startTime, endTime time.
 	if title == "" {
 		return errors.New("title is required")
 	}
-	if endTime.Before(startTime) {
+	if startTime.IsZero() {
+		return errors.New("start time is required")
+	}
+	if endTime.IsZero() {
+		return errors.New("end time is required")
+	}
+	if !endTime.After(startTime) {
 		return errors.New("end time must be after start time")
 	}
 
