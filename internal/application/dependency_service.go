@@ -71,7 +71,7 @@ func (s *DependencyService) UpdateDependency(ctx context.Context, id int64, name
 		return nil, fmt.Errorf("failed to get dependency: %w", err)
 	}
 	if dep == nil {
-		return nil, fmt.Errorf("dependency not found: %d", id)
+		return nil, fmt.Errorf("dependency not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	if err := dep.Update(name, description); err != nil {
@@ -100,7 +100,7 @@ func (s *DependencyService) SetHeartbeatConfig(ctx context.Context, id int64, co
 		return nil, fmt.Errorf("failed to get dependency: %w", err)
 	}
 	if dep == nil {
-		return nil, fmt.Errorf("dependency not found: %d", id)
+		return nil, fmt.Errorf("dependency not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	if err := dep.SetHeartbeatConfig(config); err != nil {
@@ -121,7 +121,7 @@ func (s *DependencyService) ClearHeartbeat(ctx context.Context, id int64) (*doma
 		return nil, fmt.Errorf("failed to get dependency: %w", err)
 	}
 	if dep == nil {
-		return nil, fmt.Errorf("dependency not found: %d", id)
+		return nil, fmt.Errorf("dependency not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	dep.ClearHeartbeat()
@@ -140,7 +140,7 @@ func (s *DependencyService) UpdateDependencyStatus(ctx context.Context, id int64
 		return nil, fmt.Errorf("failed to get dependency: %w", err)
 	}
 	if dep == nil {
-		return nil, fmt.Errorf("dependency not found: %d", id)
+		return nil, fmt.Errorf("dependency not found: %d: %w", id, domain.ErrNotFound)
 	}
 
 	newStatus, err := domain.NewStatus(statusStr)

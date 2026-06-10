@@ -1,12 +1,11 @@
 package domain
 
 import (
-	"errors"
 	"strings"
 	"time"
 )
 
-var ErrEmptyName = errors.New("name cannot be empty")
+var ErrEmptyName = ValidationError("name cannot be empty")
 
 // System is an entity representing a monitored system/project
 type System struct {

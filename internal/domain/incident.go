@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"time"
 )
 
@@ -53,10 +52,10 @@ type IncidentUpdate struct {
 // NewIncident creates a new incident
 func NewIncident(title, message string, severity IncidentSeverity) (*Incident, error) {
 	if title == "" {
-		return nil, errors.New("title is required")
+		return nil, ValidationError("title is required")
 	}
 	if message == "" {
-		return nil, errors.New("message is required")
+		return nil, ValidationError("message is required")
 	}
 
 	// Validate severity
@@ -87,7 +86,7 @@ func (i *Incident) SetSystemIDs(ids []int64) {
 // Acknowledge marks the incident as acknowledged
 func (i *Incident) Acknowledge(by string) error {
 	if i.AcknowledgedAt != nil {
-		return errors.New("incident already acknowledged")
+		return ValidationError("incident already acknowledged")
 	}
 	now := time.Now()
 	i.AcknowledgedAt = &now
@@ -99,14 +98,14 @@ func (i *Incident) Acknowledge(by string) error {
 // UpdateStatus updates the incident status
 func (i *Incident) UpdateStatus(status IncidentStatus) error {
 	if i.Status == IncidentResolved {
-		return errors.New("cannot update resolved incident")
+		return ValidationError("cannot update resolved incident")
 	}
 
 	switch status {
 	case IncidentInvestigating, IncidentIdentified, IncidentMonitoring, IncidentResolved:
 		// valid
 	default:
-		return errors.New("invalid status")
+		return ValidationError("invalid status")
 	}
 
 	i.Status = status
@@ -123,7 +122,7 @@ func (i *Incident) UpdateStatus(status IncidentStatus) error {
 // Resolve marks the incident as resolved with optional postmortem
 func (i *Incident) Resolve(postmortem string) error {
 	if i.Status == IncidentResolved {
-		return errors.New("incident already resolved")
+		return ValidationError("incident already resolved")
 	}
 
 	now := time.Now()
@@ -168,7 +167,7 @@ func (i *Incident) AffectsSystem(systemID int64) bool {
 // NewIncidentUpdate creates a new incident update
 func NewIncidentUpdate(incidentID int64, status IncidentStatus, message, createdBy string) (*IncidentUpdate, error) {
 	if message == "" {
-		return nil, errors.New("message is required")
+		return nil, ValidationError("message is required")
 	}
 
 	return &IncidentUpdate{

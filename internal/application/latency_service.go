@@ -28,7 +28,7 @@ func (s *LatencyService) GetDependencyLatencyStats(ctx context.Context, dependen
 		return nil, fmt.Errorf("failed to get dependency: %w", err)
 	}
 	if dep == nil {
-		return nil, fmt.Errorf("dependency not found")
+		return nil, fmt.Errorf("dependency not found: %w", domain.ErrNotFound)
 	}
 
 	start, end := parsePeriod(period)

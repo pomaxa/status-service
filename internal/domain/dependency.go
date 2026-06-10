@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"net"
 	"net/url"
 	"regexp"
@@ -10,13 +9,13 @@ import (
 )
 
 var (
-	ErrInvalidSystemID          = errors.New("system ID must be positive")
-	ErrInvalidHeartbeatURL      = errors.New("invalid heartbeat URL")
-	ErrInvalidHeartbeatInterval = errors.New("heartbeat interval must be positive")
-	ErrInvalidHeartbeatMethod   = errors.New("invalid HTTP method")
-	ErrInvalidExpectStatus      = errors.New("invalid expected status code format")
-	ErrInvalidExpectBody        = errors.New("invalid expected body regex pattern")
-	ErrBlockedHeartbeatURL      = errors.New("heartbeat URL cannot target private/internal addresses")
+	ErrInvalidSystemID          = ValidationError("system ID must be positive")
+	ErrInvalidHeartbeatURL      = ValidationError("invalid heartbeat URL")
+	ErrInvalidHeartbeatInterval = ValidationError("heartbeat interval must be positive")
+	ErrInvalidHeartbeatMethod   = ValidationError("invalid HTTP method")
+	ErrInvalidExpectStatus      = ValidationError("invalid expected status code format")
+	ErrInvalidExpectBody        = ValidationError("invalid expected body regex pattern")
+	ErrBlockedHeartbeatURL      = ValidationError("heartbeat URL cannot target private/internal addresses")
 )
 
 // HeartbeatConfig contains all configuration for health checks

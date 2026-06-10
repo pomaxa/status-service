@@ -301,7 +301,7 @@ func (s *SLAService) GetSystemSLAStatus(ctx context.Context, systemID int64, per
 		return nil, fmt.Errorf("failed to get system: %w", err)
 	}
 	if system == nil {
-		return nil, fmt.Errorf("system not found")
+		return nil, fmt.Errorf("system not found: %w", domain.ErrNotFound)
 	}
 
 	start, end := s.parsePeriod(period)
@@ -315,7 +315,7 @@ func (s *SLAService) UpdateSystemSLATarget(ctx context.Context, systemID int64, 
 		return fmt.Errorf("failed to get system: %w", err)
 	}
 	if system == nil {
-		return fmt.Errorf("system not found")
+		return fmt.Errorf("system not found: %w", domain.ErrNotFound)
 	}
 
 	system.SetSLATarget(target)

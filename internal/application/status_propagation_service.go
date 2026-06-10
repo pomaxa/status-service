@@ -41,7 +41,7 @@ func (s *StatusPropagationService) PropagateStatusToSystem(ctx context.Context, 
 		return false, fmt.Errorf("failed to get system: %w", err)
 	}
 	if system == nil {
-		return false, fmt.Errorf("system not found: %d", systemID)
+		return false, fmt.Errorf("system not found: %d: %w", systemID, domain.ErrNotFound)
 	}
 
 	// Get all dependencies for the system
